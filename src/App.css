@@ -1,0 +1,133 @@
+.App {
+  font-family: sans-serif;
+  text-align: center;
+  padding: 20px;
+  max-width: 900px;
+  margin: auto;
+}
+
+.App-header {
+  background-color: #f0f0f0;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 30px;
+}
+
+.auth-section, .data-fetch-section {
+  margin-bottom: 30px;
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background-color: #f9f9f9;
+}
+
+.auth-section h2, .data-fetch-section h2 {
+  margin-top: 0;
+  color: #333;
+}
+
+.input-area {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-bottom: 20px;
+  align-items: center; /* 中心對齊輸入區域的內容 */
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column; /* 標籤在輸入框上方 */
+  align-items: flex-start; /* 標籤靠左 */
+  width: 100%;
+  max-width: 400px; /* 限制輸入框寬度 */
+}
+
+.input-group label {
+  margin-bottom: 5px;
+  font-weight: bold;
+  color: #555;
+}
+
+.input-area input[type="text"],
+.input-area input[type="password"] {
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 16px;
+  width: calc(100% - 22px); /* 考慮 padding 和 border */
+}
+
+.input-area button, .auth-section button {
+  padding: 10px 20px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.2s;
+}
+
+.input-area button:hover, .auth-section button:hover {
+  background-color: #0056b3;
+}
+
+.input-area button:disabled, .auth-section button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.output-area {
+  margin-top: 20px;
+}
+
+.loading-message {
+  color: #007bff;
+  font-style: italic;
+}
+
+.error-message {
+  color: #dc3545; /* 紅色 */
+  background-color: #f8d7da; /* 淡紅色背景 */
+  border: 1px solid #f5c6cb; /* 紅色邊框 */
+  padding: 10px;
+  border-radius: 4px;
+  margin-top: 10px;
+}
+.success-message {
+  color: #28a745; /* 綠色 */
+  background-color: #d4edda; /* 淡綠色背景 */
+  border: 1px solid #c3e6cb; /* 綠色邊框 */
+  padding: 10px;
+  border-radius: 4px;
+  margin-top: 10px;
+}
+
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+th, td {
+  border: 1px solid #ddd;
+  padding: 10px 12px;
+  text-align: left;
+  min-width: 80px; /* 最小寬度 */
+}
+
+th {
+  background-color: #f2f2f2;
+  font-weight: bold;
+  color: #333;
+}
+
+tbody tr:nth-child(even) {
+  background-color: #f9f9f9;
+}
+
+tbody tr:hover {
+  background-color: #f1f1f1;
+}
