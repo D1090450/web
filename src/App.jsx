@@ -1,246 +1,209 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import './App.css'; // 確保你的 CSS 文件存在且路徑正確
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
+import AuthCallback from './AuthCallback';
+import { generateCodeVerifier, generateCodeChallenge } from './pkceUtils';
+import './App.css'; // 如果您有 App.css
 
-// --- DataTable 組件 (保持不變) ---
-function DataTable({ records, columns }) {
-  if (!records || records.length === 0) {
-    if (columns && columns.length > 0) {
-        return (
-            <table>
-                <thead>
-                    <tr>
-                        {columns.map(key => <th key={key}>{key}</th>)}
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td colSpan={columns.length} style={{ textAlign: 'center' }}>沒有資料可顯示。</td>
-                    </tr>
-                </tbody>
-            </table>
-        );
-    }
-    return <p>沒有資料可顯示或尚未載入。</p>;
-  }
+// --- 設定 ---
+// 重要：這些值必須與您在 OAuth Provider 的設定相符
+const AUTHORIZATION_ENDPOINT = 'https://datalab-auth.tiss.dev/application/o/authorize/';
+const CLIENT_ID = 'dvWFbhyb3Xf6oxkEyXchJFUI6RTPttaKVeELaKDG1';
+const REDIRECT_URI = 'http://localhost:5173/oauth2/callback'; // 必須與 AuthCallback.jsx 中的 REDIRECT_URI 一致，並在 OAuth Provider 註冊
+const SCOPE = 'openid email profile'; // 根據您的需求調整
 
-  const columnKeys = columns && columns.length > 0 ? columns : Object.keys(records[0]?.fields || {});
+// 您的 API 端點 (透過 Vite Proxy)
+const API_PROFILE_APIKEY_ENDPOINT_PROXY = '/api-proxy/profile/apiKey'; // 假設您的 API 是 /api/profile/apiKey
+// --- 設定結束 ---
 
-  if (columnKeys.length === 0) {
-      return <p>資料格式有誤或缺少 'fields' 結構。</p>;
-  }
+function HomePage({ accessToken, onLogout, fetchApiKey }) {
+  const [apiKey, setApiKey] = useState(null);
+  const [apiError, setApiError] = useState(null);
+  const [loadingApiKey, setLoadingApiKey] = useState(false);
 
-  return (
-    <table>
-      <thead>
-        <tr>
-          {columnKeys.map(key => (
-            <th key={key}>{key}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {records.map(record => (
-          <tr key={record.id}>
-            {columnKeys.map(key => (
-              <td key={`${record.id}-${key}`}>
-                {record.fields && typeof record.fields[key] !== 'undefined' && record.fields[key] !== null
-                    ? String(record.fields[key])
-                    : ''}
-              </td>
-            ))}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-// --- 主要 App 組件 ---
-function App() {
-  const [data, setData] = useState([]);
-  const [columns, setColumns] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-
-  // --- State for Grist Connection Info ---
-  // 使用 Vite 環境變數或留空讓使用者輸入
-  // **不要直接在程式碼中硬編碼生產環境的 API Key**
-  const [gristUrl, setGristUrl] = useState(import.meta.env.VITE_GRIST_BASE_URL || ''); // 例如 'https://grist.example.com'
-  const [apiKey, setApiKey] = useState(import.meta.env.VITE_GRIST_API_KEY_DEV || ''); // **僅供開發測試，或讓使用者輸入**
-
-  const [inputDocId, setInputDocId] = useState('sGPkY6u1ZcXtNm3Qpi2LLP');
-  const [inputTableName, setInputTableName] = useState('Flight');
-
-  const fetchData = useCallback(async () => {
-    const trimmedGristUrl = gristUrl.trim().replace(/\/$/, ''); // 移除末尾斜線
-    const trimmedApiKey = apiKey.trim();
-    const trimmedDocId = inputDocId.trim();
-    const trimmedTableName = inputTableName.trim();
-
-    if (!trimmedGristUrl) {
-      setError(new Error("請輸入 Grist 服務 URL。"));
+  const handleFetchApiKey = async () => {
+    if (!accessToken) {
+      setApiError("請先登入以獲取 API Key。");
       return;
     }
-    if (!trimmedApiKey) {
-      setError(new Error("請輸入您的 Grist API Key。"));
-      return;
-    }
-    if (!trimmedDocId || !trimmedTableName) {
-      setError(new Error("請輸入有效的 Document ID 和 Table Name。"));
-      setData([]);
-      setColumns([]);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    setData([]);
-    setColumns([]);
-
-    const requestUrl = `${trimmedGristUrl}/api/docs/${trimmedDocId}/tables/${trimmedTableName}/records`;
-    // 你可能還想加上 limit 或 sort 等參數
-    // const requestUrl = `${trimmedGristUrl}/api/docs/${trimmedDocId}/tables/${trimmedTableName}/records?limit=50&sort=-id`;
-
+    setLoadingApiKey(true);
+    setApiError(null);
     try {
-      const response = await fetch(requestUrl, {
+      // 步驟 2: POST /api/profile/apiKey (如果需要先生成)
+      // 這裡假設您的 API 設計是先 POST 請求來觸發生成，然後 GET 來獲取
+      // 如果您的 API 只需要 GET，可以直接跳到 GET 請求
+      // 根據您的 API 設計，您可能需要調整這裡的邏輯
+      const postResponse = await fetch(API_PROFILE_APIKEY_ENDPOINT_PROXY, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json', // 如果 POST 有 body
+        },
+        // body: JSON.stringify({ some_data_if_needed }), // 如果 POST 需要 body
+      });
+
+      if (!postResponse.ok) {
+        // 嘗試解析錯誤訊息
+        let errorMsg = `生成 API Key 失敗: ${postResponse.status}`;
+        try {
+            const errorData = await postResponse.json();
+            errorMsg += ` - ${errorData.detail || errorData.message || JSON.stringify(errorData)}`;
+        } catch (e) { /* 忽略解析錯誤 */ }
+        throw new Error(errorMsg);
+      }
+      console.log("API Key 生成請求成功 (POST)");
+
+
+      // 步驟 3: GET /api/profile/apiKey
+      const getResponse = await fetch(API_PROFILE_APIKEY_ENDPOINT_PROXY, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${trimmedApiKey}`,
-          'Accept': 'application/json',
-          // 'Content-Type': 'application/json', // GET 請求通常不需要 Content-Type
+          'Authorization': `Bearer ${accessToken}`,
         },
       });
 
-      if (!response.ok) {
-        let errorMsg = `HTTP 錯誤! 狀態碼: ${response.status} (URL: ${requestUrl})`;
+      if (!getResponse.ok) {
+        let errorMsg = `獲取 API Key 失敗: ${getResponse.status}`;
         try {
-            const errorData = await response.json();
-            errorMsg = errorData.error || errorData.details || (Array.isArray(errorData.errors) && errorData.errors[0]?.detail) || errorMsg;
-        } catch (e) {
-            console.warn("無法解析 Grist 錯誤回應為 JSON:", e);
-            const textError = await response.text();
-            if (textError) {
-                errorMsg += ` - ${textError.substring(0, 200)}`;
-            }
-        }
+            const errorData = await getResponse.json();
+            errorMsg += ` - ${errorData.detail || errorData.message || JSON.stringify(errorData)}`;
+        } catch (e) { /* 忽略解析錯誤 */ }
         throw new Error(errorMsg);
       }
 
-      const result = await response.json();
-
-      if (result && Array.isArray(result.records)) {
-        setData(result.records);
-        if (result.records.length > 0 && result.records[0]?.fields) {
-          setColumns(Object.keys(result.records[0].fields));
-        } else {
-          setColumns([]);
-          if (result.records.length === 0) {
-            // 讓 DataTable 顯示 "沒有資料"
-          }
-        }
-      } else {
-        console.warn("Grist API 回應格式不正確:", result);
-        setData([]);
-        setColumns([]);
-        setError(new Error("從 Grist API 收到的資料格式不正確。期待 { records: [...] }。"));
-      }
-
+      const data = await getResponse.json();
+      setApiKey(data.apiKey || JSON.stringify(data)); // 假設 API 回應中有 apiKey 欄位
     } catch (err) {
-      console.error("獲取資料時發生錯誤:", err);
-      setError(err instanceof Error ? err : new Error(String(err)));
-      setData([]);
-      setColumns([]);
+      console.error("API Key 操作錯誤:", err);
+      setApiError(err.message);
+      setApiKey(null);
     } finally {
-      setLoading(false);
-    }
-  }, [gristUrl, apiKey, inputDocId, inputTableName]);
-
-  const handleFetchClick = () => {
-    fetchData();
-  };
-
-  const handleKeyPress = (event) => {
-    if (event.key === 'Enter') {
-      // 可以在輸入 Grist URL 或 API Key 時也觸發，或者只在 Doc ID/Table Name 時觸發
-      if (document.activeElement.id === "docIdInput" || document.activeElement.id === "tableNameInput") {
-        handleFetchClick();
-      }
+      setLoadingApiKey(false);
     }
   };
+
+  useEffect(() => {
+    // 您可以在這裡決定是否在組件載入時自動獲取 API Key
+    // if (accessToken) {
+    //   handleFetchApiKey();
+    // }
+  }, [accessToken]);
+
+
+  if (!accessToken) {
+    return (
+      <div>
+        <h2>請登入</h2>
+        <p>您需要登入才能訪問此內容並獲取 API Key。</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="App">
-      <h1>Grist 資料檢視器 (前端直連)</h1>
-
-      <div className="input-area">
+    <div>
+      <h2>歡迎!</h2>
+      <p>您已成功登入。</p>
+      <button onClick={handleFetchApiKey} disabled={loadingApiKey}>
+        {loadingApiKey ? '正在獲取 API Key...' : '獲取/刷新 API Key'}
+      </button>
+      {apiError && <p style={{ color: 'red' }}>API 錯誤: {apiError}</p>}
+      {apiKey && (
         <div>
-          <label htmlFor="gristUrlInput">Grist 服務 URL:</label>
-          <input
-            id="gristUrlInput"
-            type="text"
-            value={gristUrl}
-            onChange={(e) => setGristUrl(e.target.value)}
-            placeholder="例如: https://your-grist.example.com"
-            disabled={loading}
-            onKeyPress={handleKeyPress}
-          />
+          <h3>您的 API Key:</h3>
+          <pre>{typeof apiKey === 'string' ? apiKey : JSON.stringify(apiKey, null, 2)}</pre>
         </div>
-        <div>
-          <label htmlFor="apiKeyInput">Grist API Key:</label>
-          <input
-            id="apiKeyInput"
-            type="password" // 使用 password 類型稍微隱藏，但仍在前端
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="輸入您的 Grist API Key"
-            disabled={loading}
-            onKeyPress={handleKeyPress}
-          />
-        </div>
-        <hr /> {/* 分隔線 */}
-        <div>
-          <label htmlFor="docIdInput">Document ID:</label>
-          <input
-            id="docIdInput"
-            type="text"
-            value={inputDocId}
-            onChange={(e) => setInputDocId(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="輸入 Document ID"
-            disabled={loading}
-          />
-        </div>
-        <div>
-          <label htmlFor="tableNameInput">Table Name:</label>
-          <input
-            id="tableNameInput"
-            type="text"
-            value={inputTableName}
-            onChange={(e) => setInputTableName(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="輸入 Table Name"
-            disabled={loading}
-          />
-        </div>
-        <button
-          onClick={handleFetchClick}
-          disabled={loading || !gristUrl.trim() || !apiKey.trim() || !inputDocId.trim() || !inputTableName.trim()}
-        >
-          {loading ? '正在載入...' : '獲取資料'}
-        </button>
-      </div>
-
-      <div className="output-area">
-        {loading && <p className="loading-message" role="status">載入中...</p>}
-        {error && (
-            <p className="error-message" role="alert">
-                錯誤: {error.message}
-            </p>
-        )}
-        {!loading && !error && <DataTable records={data} columns={columns} />}
-      </div>
+      )}
+      <button onClick={onLogout} style={{ marginTop: '20px' }}>登出</button>
     </div>
   );
 }
 
-export default App;
+function App() {
+  const [accessToken, setAccessToken] = useState(sessionStorage.getItem('access_token'));
+  // 可以考慮也儲存 refresh_token 和 id_token 如果您的應用需要
+  // const [refreshToken, setRefreshToken] = useState(sessionStorage.getItem('refresh_token'));
+  // const [idToken, setIdToken] = useState(sessionStorage.getItem('id_token'));
+
+  const navigate = useNavigate(); // Hook for programmatic navigation
+
+  const handleLogin = async () => {
+    const verifier = generateCodeVerifier();
+    const challenge = await generateCodeChallenge(verifier);
+    const state = generateCodeVerifier(); // 也可以用 uuid
+
+    sessionStorage.setItem('oauth_code_verifier', verifier);
+    sessionStorage.setItem('oauth_state', state);
+
+    const params = new URLSearchParams({
+      client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      response_type: 'code',
+      scope: SCOPE,
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+      state: state,
+    });
+
+    window.location.href = `${AUTHORIZATION_ENDPOINT}?${params.toString()}`;
+  };
+
+  const handleLogout = () => {
+    setAccessToken(null);
+    sessionStorage.removeItem('access_token');
+    // sessionStorage.removeItem('refresh_token');
+    // sessionStorage.removeItem('id_token');
+    // 可選：如果您的 OAuth Provider 支援 RP-Initiated Logout，可以在這裡跳轉到登出端點
+    // window.location.href = 'YOUR_OAUTH_PROVIDER_LOGOUT_ENDPOINT';
+    navigate('/'); // 跳轉回首頁或登入頁面
+    console.log("已登出");
+  };
+
+  const handleLoginSuccess = (newAccessToken, newRefreshToken, newIdToken) => {
+    setAccessToken(newAccessToken);
+    sessionStorage.setItem('access_token', newAccessToken);
+    // if (newRefreshToken) sessionStorage.setItem('refresh_token', newRefreshToken);
+    // if (newIdToken) sessionStorage.setItem('id_token', newIdToken);
+    console.log("登入成功，已獲取 Access Token:", newAccessToken);
+  };
+
+  return (
+    <div className="App">
+      <header className="App-header">
+        <h1>OAuth PKCE 範例應用</h1>
+        <nav>
+          <Link to="/">首頁</Link>
+          {!accessToken && (
+            <button onClick={handleLogin} style={{ marginLeft: '10px' }}>登入</button>
+          )}
+        </nav>
+      </header>
+      <main>
+        <Routes>
+          <Route
+            path="/oauth2/callback"
+            element={<AuthCallback onLoginSuccess={handleLoginSuccess} />}
+          />
+          <Route
+            path="/"
+            element={
+              <HomePage
+                accessToken={accessToken}
+                onLogout={handleLogout}
+              />
+            }
+          />
+        </Routes>
+      </main>
+    </div>
+  );
+}
+
+// 將 App 組件包裝在 Router 內部，這樣 App 內部才能使用 navigate
+function AppWrapper() {
+  return (
+    <Router>
+      <App />
+    </Router>
+  );
+}
+
+export default AppWrapper;
