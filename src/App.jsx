@@ -6,7 +6,7 @@ import './App.css'; // 如果您有 App.css
 
 // --- 設定 ---
 // 重要：這些值必須與您在 OAuth Provider 的設定相符
-const AUTHORIZATION_ENDPOINT = 'https://datalab-auth.tiss.dev/application/o/authorize/';
+const AUTHORIZATION_ENDPOINT = 'https://auth.tiss.dev/application/o/authorize/';
 const CLIENT_ID = 'dvWFbhyb3Xf6oxkEyXchJFUI6RTPttaKVeELaKDG1';
 const REDIRECT_URI = 'http://localhost:5173/oauth2/callback'; // 必須與 AuthCallback.jsx 中的 REDIRECT_URI 一致，並在 OAuth Provider 註冊
 const SCOPE = 'openid email profile'; // 根據您的需求調整

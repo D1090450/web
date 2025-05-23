@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react-swc';
 
 // 您的 OAuth 提供者和 API 的基礎 URL
-const AUTH_PROVIDER_BASE_URL = 'https://datalab-auth.tiss.dev'; // Authentik/OAuth 伺服器
+const AUTH_PROVIDER_BASE_URL = 'https://auth.tiss.dev'; // Authentik/OAuth 伺服器
 const API_BASE_URL = 'https://datalab.tiss.dev'; // 您的 Grist 或目標 API 伺服器
 
 export default defineConfig({
