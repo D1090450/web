@@ -1,209 +1,125 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
-import AuthCallback from './AuthCallback';
-import { generateCodeVerifier, generateCodeChallenge } from './pkceUtils';
-import './App.css'; // 如果您有 App.css
-
-// --- 設定 ---
-// 重要：這些值必須與您在 OAuth Provider 的設定相符
-const AUTHORIZATION_ENDPOINT = 'https://auth.tiss.dev/application/o/authorize/';
-const CLIENT_ID = 'dvWFbhyb3Xf6oxkEyXchJFUI6RTPttaKVeELaKDG1';
-const REDIRECT_URI = 'http://localhost:5173/oauth2/callback'; // 必須與 AuthCallback.jsx 中的 REDIRECT_URI 一致，並在 OAuth Provider 註冊
-const SCOPE = 'openid email profile'; // 根據您的需求調整
-
-// 您的 API 端點 (透過 Vite Proxy)
-const API_PROFILE_APIKEY_ENDPOINT_PROXY = '/api-proxy/profile/apiKey'; // 假設您的 API 是 /api/profile/apiKey
-// --- 設定結束 ---
-
-function HomePage({ accessToken, onLogout, fetchApiKey }) {
-  const [apiKey, setApiKey] = useState(null);
-  const [apiError, setApiError] = useState(null);
-  const [loadingApiKey, setLoadingApiKey] = useState(false);
-
-  const handleFetchApiKey = async () => {
-    if (!accessToken) {
-      setApiError("請先登入以獲取 API Key。");
-      return;
-    }
-    setLoadingApiKey(true);
-    setApiError(null);
-    try {
-      // 步驟 2: POST /api/profile/apiKey (如果需要先生成)
-      // 這裡假設您的 API 設計是先 POST 請求來觸發生成，然後 GET 來獲取
-      // 如果您的 API 只需要 GET，可以直接跳到 GET 請求
-      // 根據您的 API 設計，您可能需要調整這裡的邏輯
-      const postResponse = await fetch(API_PROFILE_APIKEY_ENDPOINT_PROXY, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json', // 如果 POST 有 body
-        },
-        // body: JSON.stringify({ some_data_if_needed }), // 如果 POST 需要 body
-      });
-
-      if (!postResponse.ok) {
-        // 嘗試解析錯誤訊息
-        let errorMsg = `生成 API Key 失敗: ${postResponse.status}`;
-        try {
-            const errorData = await postResponse.json();
-            errorMsg += ` - ${errorData.detail || errorData.message || JSON.stringify(errorData)}`;
-        } catch (e) { /* 忽略解析錯誤 */ }
-        throw new Error(errorMsg);
-      }
-      console.log("API Key 生成請求成功 (POST)");
-
-
-      // 步驟 3: GET /api/profile/apiKey
-      const getResponse = await fetch(API_PROFILE_APIKEY_ENDPOINT_PROXY, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-        },
-      });
-
-      if (!getResponse.ok) {
-        let errorMsg = `獲取 API Key 失敗: ${getResponse.status}`;
-        try {
-            const errorData = await getResponse.json();
-            errorMsg += ` - ${errorData.detail || errorData.message || JSON.stringify(errorData)}`;
-        } catch (e) { /* 忽略解析錯誤 */ }
-        throw new Error(errorMsg);
-      }
-
-      const data = await getResponse.json();
-      setApiKey(data.apiKey || JSON.stringify(data)); // 假設 API 回應中有 apiKey 欄位
-    } catch (err) {
-      console.error("API Key 操作錯誤:", err);
-      setApiError(err.message);
-      setApiKey(null);
-    } finally {
-      setLoadingApiKey(false);
-    }
-  };
-
-  useEffect(() => {
-    // 您可以在這裡決定是否在組件載入時自動獲取 API Key
-    // if (accessToken) {
-    //   handleFetchApiKey();
-    // }
-  }, [accessToken]);
-
-
-  if (!accessToken) {
-    return (
-      <div>
-        <h2>請登入</h2>
-        <p>您需要登入才能訪問此內容並獲取 API Key。</p>
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <h2>歡迎!</h2>
-      <p>您已成功登入。</p>
-      <button onClick={handleFetchApiKey} disabled={loadingApiKey}>
-        {loadingApiKey ? '正在獲取 API Key...' : '獲取/刷新 API Key'}
-      </button>
-      {apiError && <p style={{ color: 'red' }}>API 錯誤: {apiError}</p>}
-      {apiKey && (
-        <div>
-          <h3>您的 API Key:</h3>
-          <pre>{typeof apiKey === 'string' ? apiKey : JSON.stringify(apiKey, null, 2)}</pre>
-        </div>
-      )}
-      <button onClick={onLogout} style={{ marginTop: '20px' }}>登出</button>
-    </div>
-  );
-}
+import './App.css'; // 你可以添加一些樣式
 
 function App() {
-  const [accessToken, setAccessToken] = useState(sessionStorage.getItem('access_token'));
-  // 可以考慮也儲存 refresh_token 和 id_token 如果您的應用需要
-  // const [refreshToken, setRefreshToken] = useState(sessionStorage.getItem('refresh_token'));
-  // const [idToken, setIdToken] = useState(sessionStorage.getItem('id_token'));
+  const [apiKey, setApiKey] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [isGristLoggedIn, setIsGristLoggedIn] = useState(false); // 簡單的登錄狀態模擬
 
-  const navigate = useNavigate(); // Hook for programmatic navigation
+  // Grist API端點 (相對於根路徑，因為 Vite 的 base 配置會處理前綴)
+  // 如果你的 Grist API 不在根路徑下，例如在 /grist-app/api/...
+  // 你可能需要寫成 const gristApiKeyEndpoint = '/grist-app/api/v1/me/api_key';
+  const gristApiKeyEndpoint = '/api/v1/me/api_key'; // 假設 Grist API 在根的 /api/ 路徑下
 
-  const handleLogin = async () => {
-    const verifier = generateCodeVerifier();
-    const challenge = await generateCodeChallenge(verifier);
-    const state = generateCodeVerifier(); // 也可以用 uuid
+  // 嘗試獲取 API Key 的函數
+  const fetchGristApiKey = async () => {
+    setIsLoading(true);
+    setError(null);
+    setApiKey(null);
 
-    sessionStorage.setItem('oauth_code_verifier', verifier);
-    sessionStorage.setItem('oauth_state', state);
+    try {
+      // 由於 Vite 的 base 配置，相對路徑會自動加上 /my-app-a/
+      // 但我們調用的是 Grist 的 API，它在根域名下，所以我們使用相對於根的路徑
+      // 如果 vite.config.js 中的 base 導致 fetch 的 URL 不正確，
+      // 你可能需要硬編碼完整的 URL: 'https://grist.tiss.dev/api/v1/me/api_key'
+      // 但通常情況下，瀏覽器會將 /api/... 解析為 https://grist.tiss.dev/api/...
+      const response = await fetch(gristApiKeyEndpoint, {
+        method: 'GET',
+        credentials: 'include', // 非常重要，用於發送Cookie
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
 
-    const params = new URLSearchParams({
-      client_id: CLIENT_ID,
-      redirect_uri: REDIRECT_URI,
-      response_type: 'code',
-      scope: SCOPE,
-      code_challenge: challenge,
-      code_challenge_method: 'S256',
-      state: state,
-    });
+      if (response.status === 401 || response.status === 403) {
+        setError('無法獲取 Grist API Key：用戶未登錄Grist或無權限。請先在另一個標籤頁登錄Grist。');
+        setIsGristLoggedIn(false);
+        return;
+      }
 
-    window.location.href = `${AUTHORIZATION_ENDPOINT}?${params.toString()}`;
+      if (!response.ok) {
+        throw new Error(`HTTP 錯誤! 狀態碼: ${response.status}, 信息: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data && data.apiKey) {
+        setApiKey(data.apiKey);
+        setIsGristLoggedIn(true); // 假設獲取成功即已登錄
+      } else {
+        setError('Grist API響應中未找到有效的 API Key。');
+        console.warn('API Response:', data);
+      }
+    } catch (err) {
+      setError(`獲取 API Key 時發生錯誤: ${err.message}`);
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleLogout = () => {
-    setAccessToken(null);
-    sessionStorage.removeItem('access_token');
-    // sessionStorage.removeItem('refresh_token');
-    // sessionStorage.removeItem('id_token');
-    // 可選：如果您的 OAuth Provider 支援 RP-Initiated Logout，可以在這裡跳轉到登出端點
-    // window.location.href = 'YOUR_OAUTH_PROVIDER_LOGOUT_ENDPOINT';
-    navigate('/'); // 跳轉回首頁或登入頁面
-    console.log("已登出");
+  // 假設一個簡單的方式讓用戶“模擬”或確認他們已在Grist登錄
+  // 實際應用中，你可能不需要這個，直接嘗試獲取key
+  const handleAssumeLoggedIn = () => {
+    // 這裡可以嘗試直接調用 fetchGristApiKey
+    // 或者只是更新一個狀態讓用戶可以點擊獲取按鈕
+    alert("請確保您已在另一個瀏覽器標籤頁登錄到 grist.tiss.dev。然後點擊 '獲取Grist API Key'。");
+    // 你也可以在這裡加一個延遲後自動嘗試獲取API Key
   };
 
-  const handleLoginSuccess = (newAccessToken, newRefreshToken, newIdToken) => {
-    setAccessToken(newAccessToken);
-    sessionStorage.setItem('access_token', newAccessToken);
-    // if (newRefreshToken) sessionStorage.setItem('refresh_token', newRefreshToken);
-    // if (newIdToken) sessionStorage.setItem('id_token', newIdToken);
-    console.log("登入成功，已獲取 Access Token:", newAccessToken);
-  };
 
   return (
     <div className="App">
       <header className="App-header">
-        <h1>OAuth PKCE 範例應用</h1>
-        <nav>
-          <Link to="/">首頁</Link>
-          {!accessToken && (
-            <button onClick={handleLogin} style={{ marginLeft: '10px' }}>登入</button>
-          )}
-        </nav>
+        <h1>網頁 A - Grist API Key 獲取器</h1>
+        <p>
+          此應用部署在 <code>/my-app-a/</code> 路徑下。
+        </p>
+        <p>
+          Grist Cookie Domain: <code>.grist.tiss.dev</code> (預期) <br />
+          Grist Cookie Path: <code>/</code> (預期)
+        </p>
+
+        {!apiKey && (
+          <button onClick={fetchGristApiKey} disabled={isLoading}>
+            {isLoading ? '正在獲取...' : '獲取Grist API Key'}
+          </button>
+        )}
+
+        {isLoading && <p>載入中，請稍候...</p>}
+
+        {error && (
+          <div style={{ color: 'red', marginTop: '20px' }}>
+            <p><strong>錯誤：</strong> {error}</p>
+            {error.includes("未登錄Grist") && (
+              <p>
+                請打開 <a href="https://grist.tiss.dev" target="_blank" rel="noopener noreferrer">Grist (grist.tiss.dev)</a> 並登錄，然後再試一次。
+              </p>
+            )}
+          </div>
+        )}
+
+        {apiKey && (
+          <div style={{ marginTop: '20px', color: 'green' }}>
+            <h2>成功獲取到 Grist API Key!</h2>
+            <p><strong>API Key:</strong> <code>{apiKey}</code></p>
+            <p><em>(這只是一個演示，請勿在生產環境中這樣直接顯示敏感信息)</em></p>
+            <button onClick={() => { setApiKey(null); setError(null); }}>清除 API Key 並重試</button>
+          </div>
+        )}
+
+        <hr style={{margin: "30px 0"}}/>
+        <p><em>開發提示:</em></p>
+        <ul style={{textAlign: "left", fontSize: "0.9em"}}>
+            <li>確保你已在同一瀏覽器的另一個標籤頁登錄到 <code>grist.tiss.dev</code>。</li>
+            <li>打開瀏覽器開發者工具 (F12)，查看網絡(Network)請求和控制台(Console)日誌。</li>
+            <li>檢查請求到 <code>{gristApiKeyEndpoint}</code> 的請求頭中是否包含 Grist 的 Cookie。</li>
+            <li>如果遇到路徑問題 (例如404)，確認 Vite 的 `base` 配置和 NPM 的路徑轉發/剝離配置。</li>
+        </ul>
       </header>
-      <main>
-        <Routes>
-          <Route
-            path="/oauth2/callback"
-            element={<AuthCallback onLoginSuccess={handleLoginSuccess} />}
-          />
-          <Route
-            path="/"
-            element={
-              <HomePage
-                accessToken={accessToken}
-                onLogout={handleLogout}
-              />
-            }
-          />
-        </Routes>
-      </main>
     </div>
   );
 }
 
-// 將 App 組件包裝在 Router 內部，這樣 App 內部才能使用 navigate
-function AppWrapper() {
-  return (
-    <Router>
-      <App />
-    </Router>
-  );
-}
-
-export default AppWrapper;
+export default App;
