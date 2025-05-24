@@ -4,5 +4,10 @@ import react from '@vitejs/plugin-react-swc'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  base: '/my-app-a/' // <<<< 重要：設置基礎路徑
+  base: '/my-app-a/',
+  server:{
+    allowedhosts: [
+      'webapp.tiss.dev'
+    ],
+  }
 })

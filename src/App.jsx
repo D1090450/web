@@ -10,7 +10,7 @@ function App() {
   // Grist API端點 (相對於根路徑，因為 Vite 的 base 配置會處理前綴)
   // 如果你的 Grist API 不在根路徑下，例如在 /grist-app/api/...
   // 你可能需要寫成 const gristApiKeyEndpoint = '/grist-app/api/v1/me/api_key';
-  const gristApiKeyEndpoint = '/api/v1/me/api_key'; // 假設 Grist API 在根的 /api/ 路徑下
+  const gristApiKeyEndpoint = '/api/api_key'; // 假設 Grist API 在根的 /api/ 路徑下
 
   // 嘗試獲取 API Key 的函數
   const fetchGristApiKey = async () => {
