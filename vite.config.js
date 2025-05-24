@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
   base: '/my-app-a/',
   server:{
-    allowedhosts: [
+    allowedHosts: [
       'webapp.tiss.dev'
     ],
   }
