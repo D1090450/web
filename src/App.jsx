@@ -1,11 +1,11 @@
 // src/App.jsx
 import React from 'react';
-import GristDirectDataViewer from './GristDirectDataViewer'; // 假設 GristDirectDataViewer.jsx 在同一目錄
+import GristDynamicSelectorViewer from './GristDynamicSelectorViewer';
 
 function App() {
   return (
     <div className="App">
-      <GristDirectDataViewer />
+      <GristDynamicSelectorViewer />
     </div>
   );
 }
