@@ -2,9 +2,9 @@
 import React, { useState, useCallback, useEffect } from 'react';
 
 // Grist API 的基礎 URL
-const GRIST_API_BASE_URL = 'https://grist.tiss.dev'; // 你的 Grist 實例 API URL
+const GRIST_API_BASE_URL = 'https://grist.tiss.dev'; // 請替換成您的 Grist 實例 API URL
 
-// 嵌入 GristApiKeyFetcher 的邏輯或簡化為直接輸入 (與之前類似)
+// API Key 管理組件 (與您提供的版本基本相同)
 function GristApiKeyManager({ apiKey, onApiKeyUpdate, onStatusUpdate }) {
   const [localApiKey, setLocalApiKey] = useState(apiKey || '');
   const [isFetching, setIsFetching] = useState(false);
@@ -15,22 +15,23 @@ function GristApiKeyManager({ apiKey, onApiKeyUpdate, onStatusUpdate }) {
     try {
       const response = await fetch(`${GRIST_API_BASE_URL}/api/profile/apiKey`, {
         method: 'GET',
-        credentials: 'include',
+        credentials: 'include', // 重要：為了讓瀏覽器發送 Grist 網站的 cookie
         headers: { 'Accept': 'text/plain' },
       });
       const responseText = await response.text();
       if (!response.ok) throw new Error(`HTTP ${response.status}: ${responseText || '無法獲取 API Key'}`);
       const fetchedKey = responseText.trim();
+      // 基本的 API Key 格式檢查 (Grist API Key 通常是較長的字串)
       if (!fetchedKey || fetchedKey.includes('<') || fetchedKey.length < 32) {
-        throw new Error('獲取到的 API Key 似乎無效。');
+        throw new Error('獲取到的 API Key 似乎無效。請確認您已登入 Grist 且瀏覽器允許傳送 Cookie。');
       }
       setLocalApiKey(fetchedKey);
       onApiKeyUpdate(fetchedKey);
-      onStatusUpdate('API Key 獲取成功！');
+      onStatusUpdate('API Key 自動獲取成功！');
     } catch (error) {
       console.error("Error fetching API key from profile:", error);
-      onStatusUpdate(`獲取 API Key 失敗: ${error.message}. 請確保您已登入 Grist 且 CORS 設定正確。或手動輸入。`);
-      onApiKeyUpdate('');
+      onStatusUpdate(`自動獲取 API Key 失敗: ${error.message}. 請確保您已登入 Grist 主站，或嘗試手動輸入。`);
+      onApiKeyUpdate(''); // 清除可能無效的 key
     } finally {
       setIsFetching(false);
     }
@@ -47,7 +48,6 @@ function GristApiKeyManager({ apiKey, onApiKeyUpdate, onStatusUpdate }) {
   };
 
   useEffect(() => {
-    // 如果外部 apiKey 變化 (例如從 localStorage 加載)，更新 localApiKey
     setLocalApiKey(apiKey || '');
   }, [apiKey]);
 
@@ -55,18 +55,18 @@ function GristApiKeyManager({ apiKey, onApiKeyUpdate, onStatusUpdate }) {
     <div style={{ marginBottom: '15px', padding: '10px', border: '1px dashed #aaa' }}>
       <h4>API Key 管理</h4>
       <p>
-        登入 <code>{GRIST_API_BASE_URL}</code> 可啟用 "自動獲取" (依賴 Cookie 和 CORS)。
-        或從 Grist Profile 頁面手動複製 API Key。
+        若要啟用 "自動獲取"，請先登入您的 Grist 實例 (<code>{GRIST_API_BASE_URL}</code>)。
+        或者，您可以從 Grist 個人資料頁面手動複製 API Key 貼於下方。
       </p>
       <input
         type="password"
         value={localApiKey}
         onChange={(e) => setLocalApiKey(e.target.value)}
         placeholder="在此輸入或貼上 Grist API Key"
-        style={{ width: '350px', marginRight: '10px', padding: '8px' }}
+        style={{ width: 'calc(100% - 230px)', marginRight: '10px', padding: '8px', boxSizing: 'border-box' }}
       />
       <button onClick={handleManualSubmit} style={{ padding: '8px 12px', marginRight: '5px' }}>
-        設定手動輸入的 Key
+        設定手動 Key
       </button>
       <button onClick={fetchKeyFromProfile} disabled={isFetching} style={{ padding: '8px 12px' }}>
         {isFetching ? '正在獲取...' : '自動獲取 API Key'}
@@ -77,7 +77,7 @@ function GristApiKeyManager({ apiKey, onApiKeyUpdate, onStatusUpdate }) {
 
 
 function GristDynamicSelectorViewer() {
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('gristApiKey') || ''); // 從 localStorage 初始化
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('gristApiKey') || '');
   const [statusMessage, setStatusMessage] = useState('');
 
   const [documents, setDocuments] = useState([]);
@@ -85,40 +85,54 @@ function GristDynamicSelectorViewer() {
   const [isLoadingDocs, setIsLoadingDocs] = useState(false);
 
   const [tables, setTables] = useState([]);
-  const [selectedTableId, setSelectedTableId] = useState(''); // Grist API 通常用 tableId
+  const [selectedTableId, setSelectedTableId] = useState('');
   const [isLoadingTables, setIsLoadingTables] = useState(false);
+
+  // 新增 filter 和 sort 狀態
+  const [filterQuery, setFilterQuery] = useState(''); // 用於用戶輸入的 JSON 字串
+  const [sortQuery, setSortQuery] = useState('');   // 用於用戶輸入的排序字串
 
   const [tableData, setTableData] = useState(null);
   const [columns, setColumns] = useState([]);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [dataError, setDataError] = useState('');
 
-  // 更新 API Key 並存儲到 localStorage
   const handleApiKeyUpdate = useCallback((key) => {
     setApiKey(key);
     if (key) {
       localStorage.setItem('gristApiKey', key);
-      setStatusMessage('API Key 已更新。');
+      setStatusMessage('API Key 已更新。請選擇文檔。');
     } else {
       localStorage.removeItem('gristApiKey');
       setStatusMessage('API Key 已清除。');
-      // 清除相關選擇
-      setDocuments([]);
-      setSelectedDocId('');
-      setTables([]);
-      setSelectedTableId('');
-      setTableData(null);
     }
+    // 清除相關選擇和數據
+    setDocuments([]);
+    setSelectedDocId('');
+    setTables([]);
+    setSelectedTableId('');
+    setTableData(null);
+    setFilterQuery('');
+    setSortQuery('');
+    setDataError('');
   }, []);
 
-  // 通用 API 請求函數
   const makeGristApiRequest = useCallback(async (endpoint, method = 'GET', params = null) => {
     if (!apiKey) {
       throw new Error('API Key 未設定。');
     }
     let url = `${GRIST_API_BASE_URL}${endpoint}`;
+    const queryParams = new URLSearchParams();
+
     if (params) {
-      url += `?${new URLSearchParams(params).toString()}`;
+      for (const key in params) {
+        if (params[key] !== undefined && params[key] !== null && params[key] !== '') {
+           queryParams.append(key, params[key]);
+        }
+      }
+    }
+    if (queryParams.toString()){
+        url += `?${queryParams.toString()}`;
     }
 
     const response = await fetch(url, {
@@ -126,10 +140,18 @@ function GristDynamicSelectorViewer() {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Accept': 'application/json',
+        'Content-Type': method !== 'GET' ? 'application/json' : undefined, // GET請求不應有Content-Type
       },
+      // body: method !== 'GET' && bodyParams ? JSON.stringify(bodyParams) : undefined,
     });
 
-    const responseData = await response.json();
+    const responseData = await response.json().catch(() => {
+      // 如果 JSON 解析失敗，嘗試讀取純文本錯誤訊息
+      return response.text().then(text => {
+        throw new Error(`HTTP error ${response.status}: ${text || response.statusText}`);
+      });
+    });
+
     if (!response.ok) {
       const errorMsg = responseData?.error?.message || responseData?.error || responseData?.message || `HTTP error ${response.status}`;
       console.error(`Grist API Error for ${method} ${url}:`, responseData);
@@ -138,7 +160,6 @@ function GristDynamicSelectorViewer() {
     return responseData;
   }, [apiKey]);
 
-  // 獲取文檔列表
   useEffect(() => {
     if (!apiKey) {
       setDocuments([]);
@@ -150,20 +171,18 @@ function GristDynamicSelectorViewer() {
       setStatusMessage('正在獲取文檔列表...');
       setDataError('');
       try {
-        // *** 假設的端點，你需要確認 Grist 實際的端點 ***
-        // 可能需要遍歷 orgs/workspaces，或直接有 /api/docs
-        // 這裡簡化為直接調用 /api/docs，並假設它返回 {docs: [{id: '', name: ''}]} 或直接是 [{id: '', name: ''}]
+        // Grist API 的 /api/docs 端點會返回使用者有權限存取的所有文檔
         const data = await makeGristApiRequest('/api/docs');
-        const docList = data.docs || data; // 適應兩種可能的返回格式
+        const docList = data.docs || (Array.isArray(data) ? data : []);
         if (Array.isArray(docList)) {
-          setDocuments(docList.map(doc => ({ id: doc.id, name: doc.name || `文檔 ${doc.id}` }))); // 確保有 name
-          setStatusMessage('文檔列表獲取成功。');
+          setDocuments(docList.map(doc => ({ id: doc.id, name: doc.name || `文檔 ${doc.id}` })));
+          setStatusMessage(docList.length > 0 ? '文檔列表獲取成功。請選擇一個文檔。' : '未找到任何文檔，或 API Key 無權限訪問。');
         } else {
           throw new Error('文檔列表格式不正確。');
         }
       } catch (error) {
         console.error('獲取文檔列表失敗:', error);
-        setStatusMessage(`獲取文檔列表失敗: ${error.message}. 請檢查 API Key 權限和網路。`);
+        setStatusMessage(`獲取文檔列表失敗: ${error.message}`);
         setDocuments([]);
       } finally {
         setIsLoadingDocs(false);
@@ -172,7 +191,6 @@ function GristDynamicSelectorViewer() {
     fetchDocs();
   }, [apiKey, makeGristApiRequest]);
 
-  // 獲取選定文檔的表格列表
   useEffect(() => {
     if (!apiKey || !selectedDocId) {
       setTables([]);
@@ -181,23 +199,17 @@ function GristDynamicSelectorViewer() {
     }
     const fetchTables = async () => {
       setIsLoadingTables(true);
-      setStatusMessage(`正在獲取文檔 ${selectedDocId} 的表格列表...`);
+      setStatusMessage(`正在獲取文檔 "${selectedDocId}" 的表格列表...`);
       setDataError('');
       try {
-        // *** 假設的端點，你需要確認 Grist 實際的端點 ***
-        // 返回格式通常是 {tables: [{id: '', fields: [...]}]} 或直接是 [{id: '', ...}]
         const data = await makeGristApiRequest(`/api/docs/${selectedDocId}/tables`);
-        const tableList = data.tables || data; // 適應兩種可能的返回格式
-         if (Array.isArray(tableList)) {
-          // Grist API 的 tableId 通常就是其 'name' (normalized)
-          // 有時 API 返回的 table 對象會有一個 `id` 字段是 tableId，`fields` 數組裡第一個對象的 `colId` 是 'id'
-          // 這裡我們假設 API 返回的每個 table 對象有一個 `id` 屬性作為 tableId (通常是正規化後的表名)
-          // 並且有一個 `tableId` 字段（有時也叫 id），用於顯示的名稱可能是 `name` 或 `id`
+        const tableList = data.tables || (Array.isArray(data) ? data : []);
+        if (Array.isArray(tableList)) {
           setTables(tableList.map(table => ({
-            id: table.id, // 這是 API 用於引用 table 的 ID
-            name: table.id // 假設 tableId 就是顯示名稱，或者你可以尋找 table.name
+            id: table.id, // table.id 即為 tableId
+            name: table.id // Grist 中 tableId 通常也作為其識別名稱
           })));
-          setStatusMessage('表格列表獲取成功。');
+          setStatusMessage(tableList.length > 0 ? '表格列表獲取成功。請選擇一個表格。' : '該文檔中未找到表格，或表格名稱無法解析。');
         } else {
           throw new Error('表格列表格式不正確。');
         }
@@ -212,7 +224,6 @@ function GristDynamicSelectorViewer() {
     fetchTables();
   }, [apiKey, selectedDocId, makeGristApiRequest]);
 
-  // 獲取表格數據
   const handleFetchTableData = useCallback(async () => {
     if (!apiKey || !selectedDocId || !selectedTableId) {
       setDataError('請先設定 API Key 並選擇文檔和表格。');
@@ -222,26 +233,47 @@ function GristDynamicSelectorViewer() {
     setDataError('');
     setTableData(null);
     setColumns([]);
-    setStatusMessage(`正在獲取 ${selectedDocId} / ${selectedTableId} 的數據...`);
+    setStatusMessage(`正在從文檔 "${selectedDocId}" 的表格 "${selectedTableId}" 中獲取數據...`);
+
+    const params = { limit: '50' }; // 預設獲取50條，您可以讓這個值也可配置
+
+    if (filterQuery) {
+      try {
+        JSON.parse(filterQuery); // 驗證 filterQuery 是否為合法的 JSON
+        params.filter = filterQuery;
+      } catch (e) {
+        setDataError('過濾條件不是有效的 JSON 格式。請檢查輸入，例如：{"ColumnID": "Value"}');
+        setStatusMessage('過濾條件格式錯誤。');
+        setIsLoadingData(false);
+        return;
+      }
+    }
+
+    if (sortQuery.trim()) {
+      params.sort = sortQuery.trim();
+    }
 
     try {
       const data = await makeGristApiRequest(
         `/api/docs/${selectedDocId}/tables/${selectedTableId}/records`,
         'GET',
-        { limit: '50' } // 示例參數
+        params
       );
       if (data && data.records) {
         setTableData(data.records);
-        if (data.records.length > 0 && data.records[0].fields) {
+        if (data.records.length > 0) {
+          // 從第一條記錄的 fields 推斷欄位名稱 (Grist 的 Column ID)
+          // 更好的做法可能是從 /tables/{tableId}/columns 端點獲取欄位定義
           const allCols = new Set();
           data.records.forEach(rec => {
             if (rec.fields) Object.keys(rec.fields).forEach(key => allCols.add(key));
           });
           setColumns(Array.from(allCols));
+          setStatusMessage(`成功獲取 ${data.records.length} 條數據。`);
         } else {
           setColumns([]);
+          setStatusMessage('數據獲取成功，但表格為空或篩選結果為空。');
         }
-        setStatusMessage('數據獲取成功！');
       } else {
         throw new Error('數據格式不正確，缺少 "records" 屬性。');
       }
@@ -249,17 +281,28 @@ function GristDynamicSelectorViewer() {
       console.error('獲取表格數據失敗:', error);
       setDataError(`獲取數據失敗: ${error.message}`);
       setStatusMessage(`獲取數據失敗: ${error.message}`);
-      setTableData([]);
+      setTableData([]); // 出錯時設為空陣列，避免渲染錯誤
     } finally {
       setIsLoadingData(false);
     }
-  }, [apiKey, selectedDocId, selectedTableId, makeGristApiRequest]);
+  }, [apiKey, selectedDocId, selectedTableId, makeGristApiRequest, filterQuery, sortQuery]);
 
   return (
     <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif', maxWidth: '1000px', margin: 'auto' }}>
       <h1>Grist 數據動態選擇查看器</h1>
       <p>API 目標: <code>{GRIST_API_BASE_URL}</code></p>
-      {statusMessage && <p style={{ padding: '10px', backgroundColor: '#f0f0f0', border: `1px solid ${statusMessage.includes('失敗') ? 'red' : 'green'}` }}>{statusMessage}</p>}
+      {statusMessage && (
+        <p style={{
+          padding: '10px',
+          backgroundColor: statusMessage.includes('失敗') || statusMessage.includes('錯誤') ? '#ffebee' : '#e8f5e9',
+          border: `1px solid ${statusMessage.includes('失敗') || statusMessage.includes('錯誤') ? 'red' : 'green'}`,
+          color: statusMessage.includes('失敗') || statusMessage.includes('錯誤') ? 'red' : 'green',
+          marginTop: '10px',
+          marginBottom: '10px'
+        }}>
+          {statusMessage}
+        </p>
+      )}
 
       <GristApiKeyManager apiKey={apiKey} onApiKeyUpdate={handleApiKeyUpdate} onStatusUpdate={setStatusMessage} />
 
@@ -273,8 +316,11 @@ function GristDynamicSelectorViewer() {
               value={selectedDocId}
               onChange={(e) => {
                 setSelectedDocId(e.target.value);
-                setSelectedTableId(''); // 重置表格選擇
-                setTableData(null); // 清除舊數據
+                setSelectedTableId('');
+                setTableData(null);
+                setFilterQuery('');
+                setSortQuery('');
+                setDataError('');
               }}
               disabled={isLoadingDocs || documents.length === 0}
               style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }}
@@ -296,7 +342,10 @@ function GristDynamicSelectorViewer() {
                 value={selectedTableId}
                 onChange={(e) => {
                     setSelectedTableId(e.target.value);
-                    setTableData(null); // 清除舊數據
+                    setTableData(null);
+                    setFilterQuery('');
+                    setSortQuery('');
+                    setDataError('');
                 }}
                 disabled={isLoadingTables || tables.length === 0}
                 style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }}
@@ -312,25 +361,58 @@ function GristDynamicSelectorViewer() {
           )}
 
           {selectedDocId && selectedTableId && (
-            <button
-              onClick={handleFetchTableData}
-              disabled={isLoadingData}
-              style={{ padding: '10px 15px', marginTop: '10px', width: '100%', boxSizing: 'border-box' }}
-            >
-              {isLoadingData ? '正在加載數據...' : `獲取 ${selectedTableId} 的數據`}
-            </button>
+            <div style={{ border: '1px solid #eee', padding: '15px', marginTop: '15px' }}>
+              <h4>數據獲取選項</h4>
+              <div style={{ marginTop: '10px' }}>
+                <label htmlFor="filterInput" style={{ display: 'block', marginBottom: '5px' }}>
+                  過濾條件 (JSON 格式):
+                </label>
+                <input
+                  id="filterInput"
+                  type="text"
+                  value={filterQuery}
+                  onChange={(e) => setFilterQuery(e.target.value)}
+                  placeholder='例如：{"ColumnID": "Value"} 或 {"Age": [">", 30]}'
+                  style={{ width: '100%', padding: '8px', boxSizing: 'border-box', marginBottom: '5px' }}
+                />
+                <small>需為有效的 JSON。欄位 ID 區分大小寫。詳細語法請參考 Grist API 文件關於 "Filtering records" 的說明。</small>
+              </div>
+
+              <div style={{ marginTop: '10px', marginBottom: '10px' }}>
+                <label htmlFor="sortInput" style={{ display: 'block', marginBottom: '5px' }}>
+                  排序條件:
+                </label>
+                <input
+                  id="sortInput"
+                  type="text"
+                  value={sortQuery}
+                  onChange={(e) => setSortQuery(e.target.value)}
+                  placeholder='例如：Name, -Age (按 Name 升序，再按 Age 降序)'
+                  style={{ width: '100%', padding: '8px', boxSizing: 'border-box', marginBottom: '5px' }}
+                />
+                <small>欄位 ID 區分大小寫，前綴 "-" 表示降序。多個條件用逗號分隔。參考 "Sorting records"。</small>
+              </div>
+
+              <button
+                onClick={handleFetchTableData}
+                disabled={isLoadingData}
+                style={{ padding: '10px 15px', marginTop: '10px', width: '100%', boxSizing: 'border-box', backgroundColor: '#4CAF50', color: 'white', border: 'none', cursor: 'pointer' }}
+              >
+                {isLoadingData ? '正在加載數據...' : `獲取 "${selectedTableId}" 的數據`}
+              </button>
+            </div>
           )}
-          {dataError && <p style={{ color: 'red', marginTop: '10px', whiteSpace: 'pre-wrap' }}>{dataError}</p>}
+          {dataError && <p style={{ color: 'red', marginTop: '10px', whiteSpace: 'pre-wrap', padding: '10px', backgroundColor: '#fff0f0', border: '1px solid darkred' }}>錯誤：{dataError}</p>}
         </div>
       )}
 
       {tableData && tableData.length > 0 && columns.length > 0 && (
         <div style={{ marginTop: '20px', overflowX: 'auto' }}>
-          <h3>數據結果: (前 {tableData.length} 條)</h3>
+          <h3>數據結果: (前 {Math.min(tableData.length, 50)} 條紀錄)</h3>
           <table border="1" cellPadding="5" cellSpacing="0" style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
             <thead>
               <tr>
-                <th style={{backgroundColor: '#f2f2f2', padding: '8px', textAlign: 'left'}}>id (Record ID)</th>
+                <th style={{backgroundColor: '#f2f2f2', padding: '8px', textAlign: 'left', position: 'sticky', left: 0, zIndex: 1}}>id (Record ID)</th>
                 {columns.map((col) => (
                   <th key={col} style={{backgroundColor: '#f2f2f2', padding: '8px', textAlign: 'left'}}>{col}</th>
                 ))}
@@ -339,12 +421,12 @@ function GristDynamicSelectorViewer() {
             <tbody>
               {tableData.map((record) => (
                 <tr key={record.id}>
-                  <td style={{ padding: '8px' }}>{record.id}</td>
+                  <td style={{ padding: '8px', position: 'sticky', left: 0, backgroundColor: 'white', zIndex: 1 }}>{record.id}</td>
                   {columns.map((col) => (
                     <td key={`${record.id}-${col}`} style={{ padding: '8px', whiteSpace: 'nowrap' }}>
-                      {record.fields && record.fields[col] !== undefined
-                        ? (typeof record.fields[col] === 'object' && record.fields[col] !== null
-                          ? JSON.stringify(record.fields[col])
+                      {record.fields && record.fields[col] !== undefined && record.fields[col] !== null
+                        ? (typeof record.fields[col] === 'object'
+                          ? JSON.stringify(record.fields[col]) // 對於陣列或物件型別的欄位
                           : String(record.fields[col]))
                         : ''}
                     </td>
@@ -355,8 +437,10 @@ function GristDynamicSelectorViewer() {
           </table>
         </div>
       )}
-      {tableData && tableData.length === 0 && !isLoadingData && !dataError && apiKey && selectedDocId && selectedTableId && (
-        <p style={{ marginTop: '10px' }}>沒有找到數據，或者表格為空。</p>
+      {apiKey && selectedDocId && selectedTableId && tableData && tableData.length === 0 && !isLoadingData && !dataError && (
+        <p style={{ marginTop: '10px', padding: '10px', backgroundColor: '#fffbe6', border: '1px solid #ffc107' }}>
+            {filterQuery || sortQuery ? '沒有符合目前過濾/排序條件的數據，或者表格本身為空。' : '該表格目前沒有數據。'}
+        </p>
       )}
     </div>
   );
