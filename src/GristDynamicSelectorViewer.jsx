@@ -4,7 +4,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 // Grist API 的基礎 URL
 // const GRIST_API_BASE_URL = 'https://grist.tiss.dev';
 const GRIST_API_BASE_URL = 'https://tiss-grist.fcuai.tw';
-const TARGET_ORG_DOMAIN = 'fcuai';
+const TARGET_ORG_DOMAIN = 'fcuai.tw';
 
 // --- CSS Variables (模擬) ---
 // 為了方便管理，可以將常用顏色和字體定義在這裡，然後在 style 中引用
