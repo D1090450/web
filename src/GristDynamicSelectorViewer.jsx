@@ -45,8 +45,8 @@ function GristApiKeyManager({ apiKey, onApiKeyUpdate, onStatusUpdate }) {
         credentials: 'include',
         headers: { 'Accept': 'text/plain' },
       });
-      console.log('response: '+response)
       const responseText = await response.text();
+      console.log('response: '+responseText)
       if (!response.ok) throw new Error(`HTTP ${response.status}: ${responseText || '無法獲取 API Key'}`);
       const fetchedKey = responseText.trim();
       if (!fetchedKey || fetchedKey.includes('<') || fetchedKey.length < 32) {
