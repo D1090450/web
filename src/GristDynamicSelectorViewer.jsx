@@ -48,9 +48,6 @@ function GristApiKeyManager({ apiKey, onApiKeyUpdate, onStatusUpdate }) {
       const responseText = await response.text();
       if (!response.ok) throw new Error(`HTTP ${response.status}: ${responseText || '無法獲取 API Key'}`);
       const fetchedKey = responseText.trim();
-      if (!fetchedKey || fetchedKey.includes('<') || fetchedKey.length < 32) {
-        throw new Error('獲取到的 API Key 似乎無效。');
-      }
       setLocalApiKey(fetchedKey);
       onApiKeyUpdate(fetchedKey);
       onStatusUpdate('API Key 自動獲取成功！');
