@@ -3,7 +3,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 
 // Grist API 的基礎 URL
 // const GRIST_API_BASE_URL = 'https://grist.tiss.dev';
-const GRIST_API_BASE_URL = 'https://tiss-test.fcuai.tw';
+const GRIST_API_BASE_URL = 'https://tiss-grist.fcuai.tw';
 const TARGET_ORG_DOMAIN = 'fcuai';
 
 // --- CSS Variables (模擬) ---
