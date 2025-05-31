@@ -1,23 +1,19 @@
 // src/GristDynamicSelectorViewer.jsx
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react'; // 新增 useRef
 
 // Grist API 的基礎 URL
-// const GRIST_API_BASE_URL = 'https://grist.tiss.dev';
 const GRIST_API_BASE_URL = 'https://tiss-grist.fcuai.tw';
 const TARGET_ORG_DOMAIN = 'fcuai.tw';
 
-// --- CSS Variables (模擬) ---
-// 為了方便管理，可以將常用顏色和字體定義在這裡，然後在 style 中引用
-// 但在 JSX 的 style prop 中不能直接用 CSS 變數, 這裡僅作概念展示
-// 實際應用中，這些可以放在一個 <style> 標籤或外部 CSS 文件
 const theme = {
-  textColor: '#333740', // 深灰色文字
+  // ... (theme object remains the same) ...
+  textColor: '#333740', 
   textColorLight: '#555e6d',
   textColorSubtle: '#777f8d',
-  backgroundColor: '#ffffff', // 主背景色
-  surfaceColor: '#f8f9fa', // 卡片、輸入框等背景
+  backgroundColor: '#ffffff', 
+  surfaceColor: '#f8f9fa', 
   borderColor: '#dee2e6',
-  primaryColor: '#007bff', // 主題色 (例如按鈕)
+  primaryColor: '#007bff', 
   primaryColorText: '#ffffff',
   successColor: '#28a745',
   successColorBg: '#e9f7ef',
@@ -31,12 +27,12 @@ const theme = {
 };
 
 // API Key 管理組件
-function GristApiKeyManager({ apiKey, onApiKeyUpdate, onStatusUpdate }) {
+// 我們將 fetchKeyFromProfile 暴露給父組件，以便父組件可以觸發它
+const GristApiKeyManager = React.forwardRef(({ apiKey, onApiKeyUpdate, onStatusUpdate }, ref) => {
   const [localApiKey, setLocalApiKey] = useState(apiKey || '');
   const [isFetching, setIsFetching] = useState(false);
 
   const fetchKeyFromProfile = useCallback(async () => {
-    // ... (邏輯不變) ...
     setIsFetching(true);
     onStatusUpdate('正在從個人資料獲取 API Key...');
     try {
@@ -46,26 +42,30 @@ function GristApiKeyManager({ apiKey, onApiKeyUpdate, onStatusUpdate }) {
         headers: { 'Accept': 'text/plain' },
       });
       const responseText = await response.text();
-      console.log('response: '+responseText)
-      if (!response.ok) throw new Error(`HTTP ${response.status}: ${responseText || '無法獲取 API Key'}`);
+      console.log('response from /api/profile/apiKey: ', responseText); // 保留你的 console.log
+      if (!response.ok) {
+        // 如果 HTTP 狀態碼表示未授權或錯誤，明確地讓 onApiKeyUpdate('') 被調用
+        onApiKeyUpdate(''); // 確保父組件知道獲取失敗
+        throw new Error(`HTTP ${response.status}: ${responseText || '無法獲取 API Key'}`);
+      }
       const fetchedKey = responseText.trim();
       if (!fetchedKey || fetchedKey.includes('<') || fetchedKey.length < 32) {
+        onApiKeyUpdate(''); // 確保父組件知道獲取失敗
         throw new Error('獲取到的 API Key 似乎無效。');
       }
       setLocalApiKey(fetchedKey);
-      onApiKeyUpdate(fetchedKey);
+      onApiKeyUpdate(fetchedKey); // 成功，傳遞 key
       onStatusUpdate('API Key 自動獲取成功！');
     } catch (error) {
       console.error("Error fetching API key from profile:", error);
       onStatusUpdate(`自動獲取 API Key 失敗: ${error.message}. 請確保您已登入 Grist 或手動輸入。`);
-      onApiKeyUpdate('');
+      onApiKeyUpdate(''); // 確保父組件知道獲取失敗
     } finally {
       setIsFetching(false);
     }
   }, [onApiKeyUpdate, onStatusUpdate]);
 
   const handleManualSubmit = () => {
-    // ... (邏輯不變) ...
     const trimmedKey = localApiKey.trim();
     if (trimmedKey) {
       onApiKeyUpdate(trimmedKey);
@@ -79,13 +79,18 @@ function GristApiKeyManager({ apiKey, onApiKeyUpdate, onStatusUpdate }) {
     setLocalApiKey(apiKey || '');
   }, [apiKey]);
 
+  // 使用 useImperativeHandle 將 fetchKeyFromProfile 暴露給父組件
+  React.useImperativeHandle(ref, () => ({
+    triggerFetchKeyFromProfile: fetchKeyFromProfile
+  }));
+
   return (
-    <div style={{
-      marginBottom: '20px', // 增加下方間距
-      padding: '15px', // 增加內邊距
-      border: `1px dashed ${theme.borderColor}`, // 使用主題邊框色
-      borderRadius: theme.borderRadius, // 統一圓角
-      backgroundColor: theme.surfaceColor, // 輕微背景色以區分
+    <div style={{ /* ... (styles remain the same) ... */
+      marginBottom: '20px', 
+      padding: '15px', 
+      border: `1px dashed ${theme.borderColor}`, 
+      borderRadius: theme.borderRadius, 
+      backgroundColor: theme.surfaceColor, 
     }}>
       <h4 style={{ marginTop: '0', marginBottom: '10px', color: theme.textColor }}>API Key 管理</h4>
       <p style={{ fontSize: theme.fontSizeSmall, color: theme.textColorSubtle, marginBottom: '15px' }}>
@@ -98,9 +103,9 @@ function GristApiKeyManager({ apiKey, onApiKeyUpdate, onStatusUpdate }) {
         onChange={(e) => setLocalApiKey(e.target.value)}
         placeholder="在此輸入或貼上 Grist API Key"
         style={{
-          width: 'calc(100% - 250px)', // 調整寬度以適應按鈕
+          width: 'calc(100% - 250px)', 
           marginRight: '10px',
-          padding: '10px', // 增加輸入框內邊距
+          padding: '10px', 
           fontSize: theme.fontSizeBase,
           border: `1px solid ${theme.borderColor}`,
           borderRadius: theme.borderRadius,
@@ -108,11 +113,11 @@ function GristApiKeyManager({ apiKey, onApiKeyUpdate, onStatusUpdate }) {
           color: theme.textColor,
         }}
       />
-      <button onClick={handleManualSubmit} style={{
+      <button onClick={handleManualSubmit} style={{ /* ... */ 
         padding: '10px 15px',
         marginRight: '5px',
         fontSize: theme.fontSizeBase,
-        backgroundColor: '#e9ecef', // 按鈕背景色
+        backgroundColor: '#e9ecef', 
         color: theme.textColor,
         border: `1px solid ${theme.borderColor}`,
         borderRadius: theme.borderRadius,
@@ -120,10 +125,10 @@ function GristApiKeyManager({ apiKey, onApiKeyUpdate, onStatusUpdate }) {
       }}>
         設定手動 Key
       </button>
-      <button onClick={fetchKeyFromProfile} disabled={isFetching} style={{
+      <button onClick={fetchKeyFromProfile} disabled={isFetching} style={{ /* ... */ 
         padding: '10px 15px',
         fontSize: theme.fontSizeBase,
-        backgroundColor: isFetching ? '#6c757d' : theme.primaryColor, // 禁用時不同顏色
+        backgroundColor: isFetching ? '#6c757d' : theme.primaryColor, 
         color: theme.primaryColorText,
         border: 'none',
         borderRadius: theme.borderRadius,
@@ -134,7 +139,7 @@ function GristApiKeyManager({ apiKey, onApiKeyUpdate, onStatusUpdate }) {
       </button>
     </div>
   );
-}
+});
 
 
 function GristDynamicSelectorViewer() {
@@ -143,6 +148,7 @@ function GristDynamicSelectorViewer() {
   const [currentOrgId, setCurrentOrgId] = useState(null);
 
   const [documents, setDocuments] = useState([]);
+  // ... (other states remain the same) ...
   const [selectedDocId, setSelectedDocId] = useState('');
   const [isLoadingDocs, setIsLoadingDocs] = useState(false);
 
@@ -158,18 +164,23 @@ function GristDynamicSelectorViewer() {
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [dataError, setDataError] = useState('');
 
-  // ... (所有 JS 邏輯函數 handleApiKeyUpdate, makeGristApiRequest, useEffects for data fetching, handleFetchTableData 保持不變) ...
-  // 這裡只展示 JSX 和 style 的修改
-  // 省略 JS 邏輯函數的重複程式碼...
+
+  // 新增 state 控制登入提示的顯示
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+  const apiKeyManagerRef = useRef(null); // Ref for GristApiKeyManager
+
   const handleApiKeyUpdate = useCallback((key) => {
     setApiKey(key);
     if (key) {
       localStorage.setItem('gristApiKey', key);
-      setStatusMessage('API Key 已更新。正在準備獲取組織信息...');
+      // setStatusMessage('API Key 已更新。正在準備獲取組織信息...'); // 這個訊息可能被 GristApiKeyManager 的成功訊息覆蓋
+      setShowLoginPrompt(false); // 如果成功獲取到 key，隱藏登入提示
     } else {
       localStorage.removeItem('gristApiKey');
-      setStatusMessage('API Key 已清除。');
+      // setStatusMessage('API Key 獲取失敗。'); // 這個訊息也可能被 GristApiKeyManager 的失敗訊息覆蓋
+      setShowLoginPrompt(true); // 如果 key 為空 (獲取失敗或清除)，顯示登入提示
     }
+    // 清理相關狀態 (保持不變)
     setCurrentOrgId(null);
     setDocuments([]);
     setSelectedDocId('');
@@ -181,6 +192,7 @@ function GristDynamicSelectorViewer() {
     setDataError('');
   }, []);
 
+  // ... (makeGristApiRequest and data fetching useEffects remain the same) ...
   const makeGristApiRequest = useCallback(async (endpoint, method = 'GET', params = null) => {
     if (!apiKey) {
       throw new Error('API Key 未設定。');
@@ -190,7 +202,7 @@ function GristDynamicSelectorViewer() {
     if (params) {
       for (const key in params) {
         if (params[key] !== undefined && params[key] !== null && params[key] !== '') {
-           queryParams.append(key, params[key]);
+          queryParams.append(key, params[key]);
         }
       }
     }
@@ -225,8 +237,17 @@ function GristDynamicSelectorViewer() {
     if (!apiKey) {
       setCurrentOrgId(null);
       setDocuments([]); 
+      if (localStorage.getItem('gristApiKey')) { // 如果 localStorage 中還有 key，但 state 中沒有，可能是初始化或清除了
+        // 這種情況下，如果 GristApiKeyManager 沒有自動觸發，我們可能需要一個初始的檢查
+        // 但通常 GristApiKeyManager 會在 apiKey prop 為空時嘗試獲取或顯示輸入框
+      } else {
+        // 初始加載時，如果 localStorage 和 state 都沒有 apiKey，也顯示登入提示
+        // 但這可能會與 GristApiKeyManager 的“自動獲取”功能競爭，需要小心處理
+        // 更好的做法是依賴 GristApiKeyManager 的 onApiKeyUpdate('') 來觸發 setShowLoginPrompt(true)
+      }
       return;
     }
+    // ... (getOrgIdAndFetchDocs logic remains the same) ...
     const getOrgIdAndFetchDocs = async () => {
       setIsLoadingDocs(true); 
       setStatusMessage('正在獲取組織資訊...');
@@ -268,6 +289,7 @@ function GristDynamicSelectorViewer() {
   }, [apiKey, makeGristApiRequest]);
 
   useEffect(() => {
+    // ... (fetchDocsFromWorkspaces logic remains the same) ...
     if (!apiKey || !currentOrgId) {
       setDocuments([]);
       return;
@@ -315,6 +337,7 @@ function GristDynamicSelectorViewer() {
   }, [apiKey, currentOrgId, makeGristApiRequest]);
 
   useEffect(() => {
+    // ... (fetchTables logic remains the same) ...
     if (!apiKey || !selectedDocId) {
       setTables([]);
       setSelectedTableId('');
@@ -348,6 +371,7 @@ function GristDynamicSelectorViewer() {
   }, [apiKey, selectedDocId, makeGristApiRequest]);
 
   const handleFetchTableData = useCallback(async () => {
+    // ... (handleFetchTableData logic remains the same) ...
     if (!apiKey || !selectedDocId || !selectedTableId) {
       setDataError('請先設定 API Key 並選擇文檔和表格。');
       return;
@@ -405,24 +429,53 @@ function GristDynamicSelectorViewer() {
   }, [apiKey, selectedDocId, selectedTableId, makeGristApiRequest, filterQuery, sortQuery]);
 
 
+  // 函數：打開 Grist 登入彈出視窗
+  const openGristLoginPopup = () => {
+    const loginUrl = `${GRIST_API_BASE_URL}/login`; // Grist 登入頁面 URL
+    window.open(loginUrl, 'GristLoginPopup', 'width=600,height=700,scrollbars=yes,resizable=yes,noopener,noreferrer');
+    setStatusMessage('請在新視窗中完成 Grist 登入後，點擊下方的 "刷新登入狀態" 按鈕。');
+  };
+
+  // 函數：嘗試重新獲取 API Key (通過 GristApiKeyManager)
+  const handleRetryFetchApiKey = () => {
+    if (apiKeyManagerRef.current) {
+      setStatusMessage('正在嘗試重新獲取 API Key...');
+      apiKeyManagerRef.current.triggerFetchKeyFromProfile();
+    } else {
+        setStatusMessage('無法觸發 API Key 獲取，請嘗試手動獲取或刷新頁面。');
+    }
+  };
+
+  // 初始加載時檢查是否需要顯示登入提示
+  useEffect(() => {
+    if (!localStorage.getItem('gristApiKey') && !apiKey) {
+        // 應用剛加載，且 localStorage 和當前 state 都沒有 apiKey
+        // 這種情況下，GristApiKeyManager 的 "自動獲取" 會首先嘗試
+        // 我們在這裡不立即設置 setShowLoginPrompt(true)，而是等待 GristApiKeyManager 的結果
+        // GristApiKeyManager 的 onApiKeyUpdate('') 會觸發 setShowLoginPrompt(true)
+    }
+  }, [apiKey]); // 依賴 apiKey 即可，因為 handleApiKeyUpdate 會處理 showLoginPrompt
+
+
   return (
-    <div style={{
-      padding: '25px', // 增加整體 padding
+    <div style={{ /* ... (styles remain the same) ... */ 
+      padding: '25px', 
       fontFamily: theme.fontFamily,
       fontSize: theme.fontSizeBase,
       lineHeight: theme.lineHeightBase,
       color: theme.textColor,
       backgroundColor: theme.backgroundColor,
       maxWidth: '1000px',
-      margin: '20px auto', // 上下增加 margin
-      boxShadow: '0 4px 12px rgba(0,0,0,0.08)', // 添加細微陰影
-      borderRadius: '8px', // 容器圓角
+      margin: '20px auto', 
+      boxShadow: '0 4px 12px rgba(0,0,0,0.08)', 
+      borderRadius: '8px', 
     }}>
+      {/* ... (h1 and p for title and API target remain the same) ... */}
       <h1 style={{
         color: theme.textColor,
-        textAlign: 'center', // 標題居中
-        marginBottom: '15px', // 標題下方間距
-        fontSize: '28px', // 增大標題字號
+        textAlign: 'center', 
+        marginBottom: '15px', 
+        fontSize: '28px', 
       }}>
         Grist 數據動態選擇查看器
       </h1>
@@ -431,42 +484,89 @@ function GristDynamicSelectorViewer() {
       </p>
 
       {statusMessage && (
-        <p style={{
-          padding: '12px 15px', // 調整 padding
-          backgroundColor: statusMessage.includes('失敗') || statusMessage.includes('錯誤') ? theme.errorColorBg : theme.successColorBg,
-          border: `1px solid ${statusMessage.includes('失敗') || statusMessage.includes('錯誤') ? theme.errorColor : theme.successColor}`,
-          color: statusMessage.includes('失敗') || statusMessage.includes('錯誤') ? theme.errorColor : theme.successColor,
+        <p style={{ /* ... (styles remain the same) ... */ 
+          padding: '12px 15px', 
+          backgroundColor: statusMessage.includes('失敗') || statusMessage.includes('錯誤') || statusMessage.includes('尚未登入') ? theme.errorColorBg : theme.successColorBg,
+          border: `1px solid ${statusMessage.includes('失敗') || statusMessage.includes('錯誤') || statusMessage.includes('尚未登入') ? theme.errorColor : theme.successColor}`,
+          color: statusMessage.includes('失敗') || statusMessage.includes('錯誤') || statusMessage.includes('尚未登入') ? theme.errorColor : theme.successColor,
           marginTop: '10px',
-          marginBottom: '20px', // 增加下方間距
+          marginBottom: '20px', 
           borderRadius: theme.borderRadius,
-          fontSize: theme.fontSizeSmall, // 狀態消息字體稍小
+          fontSize: theme.fontSizeSmall, 
           textAlign: 'center',
         }}>
           {statusMessage}
         </p>
       )}
 
-      <GristApiKeyManager apiKey={apiKey} onApiKeyUpdate={handleApiKeyUpdate} onStatusUpdate={setStatusMessage} />
+      {/* 將 ref 傳遞給 GristApiKeyManager */}
+      <GristApiKeyManager ref={apiKeyManagerRef} apiKey={apiKey} onApiKeyUpdate={handleApiKeyUpdate} onStatusUpdate={setStatusMessage} />
+
+      {/* 登入提示和按鈕 */}
+      {showLoginPrompt && !apiKey && (
+        <div style={{
+          padding: '20px',
+          margin: '20px 0',
+          border: `1px solid ${theme.errorColor}`, // 使用錯誤色系邊框
+          borderRadius: theme.borderRadius,
+          textAlign: 'center',
+          backgroundColor: theme.errorColorBg, // 使用錯誤色系背景
+        }}>
+          <p style={{ color: theme.errorColor, margin: '0 0 15px 0', fontWeight: '500' }}>
+            您似乎尚未登入 Grist，或者 API Key 無法自動獲取。
+          </p>
+          <button
+            onClick={openGristLoginPopup}
+            style={{
+              padding: '10px 15px',
+              marginRight: '10px',
+              fontSize: theme.fontSizeBase,
+              backgroundColor: theme.primaryColor,
+              color: theme.primaryColorText,
+              border: 'none',
+              borderRadius: theme.borderRadius,
+              cursor: 'pointer',
+            }}
+          >
+            前往 Grist 登入
+          </button>
+          <button
+            onClick={handleRetryFetchApiKey}
+            style={{
+              padding: '10px 15px',
+              fontSize: theme.fontSizeBase,
+              backgroundColor: '#6c757d', // 次要按鈕顏色
+              color: theme.primaryColorText,
+              border: 'none',
+              borderRadius: theme.borderRadius,
+              cursor: 'pointer',
+            }}
+          >
+            刷新登入狀態 / 重試自動獲取
+          </button>
+        </div>
+      )}
 
       {apiKey && (
-        <div style={{
+        <div style={{ /* ... (styles for data source selection remain the same) ... */ 
           marginTop: '25px',
-          padding: '20px', // 增加內邊距
+          padding: '20px', 
           border: `1px solid ${theme.borderColor}`,
           borderRadius: theme.borderRadius,
-          backgroundColor: theme.surfaceColor, // 數據源選擇區域背景色
+          backgroundColor: theme.surfaceColor, 
         }}>
+          {/* ... (h3 and subsequent selects, inputs, buttons for doc, table, data fetching remain the same) ... */}
           <h3 style={{ marginTop: '0', marginBottom: '20px', color: theme.textColor, borderBottom: `1px solid ${theme.borderColor}`, paddingBottom: '10px' }}>
             選擇數據源
           </h3>
-          <div style={{ marginBottom: '15px' }}> {/* 間距調整 */}
+          <div style={{ marginBottom: '15px' }}> 
             <label htmlFor="docSelect" style={{ display: 'block', marginBottom: '8px', color: theme.textColorLight, fontSize: theme.fontSizeSmall, fontWeight: '500' }}>
               選擇文檔:
             </label>
             <select
               id="docSelect"
               value={selectedDocId}
-              onChange={(e) => { /* ... (邏輯不變) ... */
+              onChange={(e) => { 
                 setSelectedDocId(e.target.value);
                 setSelectedTableId('');
                 setTableData(null);
@@ -477,12 +577,12 @@ function GristDynamicSelectorViewer() {
               disabled={isLoadingDocs || documents.length === 0}
               style={{
                 width: '100%',
-                padding: '10px', // 增加 padding
+                padding: '10px', 
                 fontSize: theme.fontSizeBase,
                 border: `1px solid ${theme.borderColor}`,
                 borderRadius: theme.borderRadius,
                 boxSizing: 'border-box',
-                backgroundColor: '#fff', // 下拉選單背景
+                backgroundColor: '#fff', 
                 color: theme.textColor,
               }}
             >
@@ -501,14 +601,14 @@ function GristDynamicSelectorViewer() {
           </div>
 
           {selectedDocId && (
-            <div style={{ marginBottom: '15px' }}> {/* 間距調整 */}
+            <div style={{ marginBottom: '15px' }}> 
               <label htmlFor="tableSelect" style={{ display: 'block', marginBottom: '8px', color: theme.textColorLight, fontSize: theme.fontSizeSmall, fontWeight: '500' }}>
                 選擇表格:
               </label>
               <select
                 id="tableSelect"
                 value={selectedTableId}
-                onChange={(e) => { /* ... (邏輯不變) ... */
+                onChange={(e) => { 
                     setSelectedTableId(e.target.value);
                     setTableData(null); 
                     setFilterQuery('');
@@ -539,25 +639,25 @@ function GristDynamicSelectorViewer() {
 
           {selectedDocId && selectedTableId && (
             <div style={{
-              border: `1px solid ${theme.borderColor}`, // 使用主題邊框色
+              border: `1px solid ${theme.borderColor}`, 
               padding: '20px',
               marginTop: '20px',
               borderRadius: theme.borderRadius,
-              backgroundColor: '#fff', // 數據獲取選項區域用白色背景
+              backgroundColor: '#fff', 
             }}>
               <h4 style={{ marginTop: '0', marginBottom: '15px', color: theme.textColor, fontSize: '18px' }}>數據獲取選項</h4>
-              <div style={{ marginBottom: '15px' }}> {/* 間距調整 */}
+              <div style={{ marginBottom: '15px' }}> 
                 <label htmlFor="filterInput" style={{ display: 'block', marginBottom: '5px', color: theme.textColorLight, fontSize: theme.fontSizeSmall }}>過濾條件 (JSON):</label>
                 <input id="filterInput" type="text" value={filterQuery} onChange={(e) => setFilterQuery(e.target.value)} placeholder='{"ColumnID": "Value"}' style={{ width: '100%', padding: '10px', fontSize: theme.fontSizeBase, border: `1px solid ${theme.borderColor}`, borderRadius: theme.borderRadius, boxSizing: 'border-box', color: theme.textColor }}/>
                 <small style={{ display: 'block', marginTop: '5px', color: theme.textColorSubtle, fontSize: '13px' }}>參考 Grist API "Filtering records"。欄位 ID 區分大小寫。</small>
               </div>
-              <div style={{ marginBottom: '20px' }}> {/* 間距調整 */}
+              <div style={{ marginBottom: '20px' }}> 
                 <label htmlFor="sortInput" style={{ display: 'block', marginBottom: '5px', color: theme.textColorLight, fontSize: theme.fontSizeSmall }}>排序條件:</label>
                 <input id="sortInput" type="text" value={sortQuery} onChange={(e) => setSortQuery(e.target.value)} placeholder='ColumnID, -AnotherColumnID' style={{ width: '100%', padding: '10px', fontSize: theme.fontSizeBase, border: `1px solid ${theme.borderColor}`, borderRadius: theme.borderRadius, boxSizing: 'border-box', color: theme.textColor }}/>
                 <small style={{ display: 'block', marginTop: '5px', color: theme.textColorSubtle, fontSize: '13px' }}>參考 "Sorting records"。前綴 "-" 表示降序。</small>
               </div>
               <button onClick={handleFetchTableData} disabled={isLoadingData} style={{
-                padding: '12px 20px', // 增大按鈕 padding
+                padding: '12px 20px', 
                 marginTop: '10px',
                 width: '100%',
                 boxSizing: 'border-box',
@@ -566,7 +666,7 @@ function GristDynamicSelectorViewer() {
                 border: 'none',
                 borderRadius: theme.borderRadius,
                 cursor: isLoadingData ? 'default' : 'pointer',
-                fontSize: '16px', // 增大按鈕字號
+                fontSize: '16px', 
                 fontWeight: '500',
                 opacity: isLoadingData ? 0.7 : 1,
               }}>
@@ -574,30 +674,31 @@ function GristDynamicSelectorViewer() {
               </button>
             </div>
           )}
-          {dataError && <p style={{
-            color: theme.errorColor, // 錯誤文字顏色
+          {dataError && <p style={{ /* ... */ 
+            color: theme.errorColor, 
             marginTop: '15px',
             whiteSpace: 'pre-wrap',
             padding: '12px 15px',
-            backgroundColor: theme.errorColorBg, // 錯誤背景
-            border: `1px solid ${theme.errorColor}`, // 錯誤邊框
+            backgroundColor: theme.errorColorBg, 
+            border: `1px solid ${theme.errorColor}`, 
             borderRadius: theme.borderRadius,
             fontSize: theme.fontSizeSmall,
           }}>錯誤：{dataError}</p>}
         </div>
       )}
 
+      {/* ... (Table display and no-data message remain the same) ... */}
       {tableData && tableData.length > 0 && columns.length > 0 && (
-        <div style={{ marginTop: '30px', overflowX: 'auto' }}> {/* 增加上方間距 */}
+        <div style={{ marginTop: '30px', overflowX: 'auto' }}> 
           <h3 style={{ marginBottom: '15px', color: theme.textColor }}>數據結果: (前 {Math.min(tableData.length, 50)} 條)</h3>
           <table style={{
             width: '100%',
-            borderCollapse: 'collapse', // 改為 collapse 以獲得更現代的表格外觀
+            borderCollapse: 'collapse', 
             minWidth: '600px',
-            fontSize: theme.fontSizeSmall, // 表格文字稍小
-            boxShadow: '0 2px 4px rgba(0,0,0,0.05)', // 表格細微陰影
-            borderRadius: theme.borderRadius, // 表格圓角 (外層div)
-            overflow: 'hidden', // 配合 borderRadius
+            fontSize: theme.fontSizeSmall, 
+            boxShadow: '0 2px 4px rgba(0,0,0,0.05)', 
+            borderRadius: theme.borderRadius, 
+            overflow: 'hidden', 
           }}>
             <thead>
               <tr>
@@ -607,7 +708,7 @@ function GristDynamicSelectorViewer() {
             </thead>
             <tbody>
               {tableData.map((record, rowIndex) => (
-                <tr key={record.id} style={{ backgroundColor: rowIndex % 2 === 0 ? '#fff' : theme.surfaceColor /* 斑馬紋 */, borderBottom: `1px solid ${theme.borderColor}` }}>
+                <tr key={record.id} style={{ backgroundColor: rowIndex % 2 === 0 ? '#fff' : theme.surfaceColor , borderBottom: `1px solid ${theme.borderColor}` }}>
                   <td style={{ padding: '10px', whiteSpace: 'nowrap', color: theme.textColorLight, position: 'sticky', left: 0, backgroundColor: rowIndex % 2 === 0 ? '#fff' : theme.surfaceColor, zIndex: 1, borderRight: `1px solid ${theme.borderColor}` }}>{record.id}</td>
                   {columns.map((col) => (
                     <td key={`${record.id}-${col}`} style={{ padding: '10px', whiteSpace: 'nowrap', color: theme.textColorLight }}>
@@ -626,9 +727,9 @@ function GristDynamicSelectorViewer() {
         <p style={{
           marginTop: '15px',
           padding: '12px 15px',
-          backgroundColor: '#fff3cd', // 警告類背景色
+          backgroundColor: '#fff3cd', 
           border: '1px solid #ffeeba',
-          color: '#856404', // 警告類文字顏色
+          color: '#856404', 
           borderRadius: theme.borderRadius,
           fontSize: theme.fontSizeSmall,
           textAlign: 'center',

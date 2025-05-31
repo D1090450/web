@@ -7,7 +7,6 @@ export default defineConfig({
   base: '/my-app-a/',
   server:{
     allowedHosts: [
-      'webapp.tiss.dev',
       'tiss-test.fcuai.tw'
     ],
   }
