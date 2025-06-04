@@ -1,22 +1,26 @@
 // src/GristDynamicSelectorViewer.jsx
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 
-// ... (GRIST_API_BASE_URL, TARGET_ORG_DOMAIN, theme object remain the same) ...
 const GRIST_API_BASE_URL = 'https://tiss-grist.fcuai.tw';
 const TARGET_ORG_DOMAIN = 'fcuai.tw';
-const theme = { /* ... */ };
+const API_KEY_RETRY_INTERVAL = 3000; // 每3秒重試一次
 
+const theme = { /* ... (theme object remains the same) ... */ };
 
-const GristApiKeyManager = React.forwardRef(({ apiKey, onApiKeyUpdate, onStatusUpdate, initialAttempt = false }, ref) => {
+// API Key 管理組件
+const GristApiKeyManager = React.forwardRef(({ apiKey, onApiKeyUpdate, onStatusUpdate, initialAttemptFailed }, ref) => {
   const [localApiKey, setLocalApiKey] = useState(apiKey || '');
   const [isFetching, setIsFetching] = useState(false);
+  const retryTimerRef = useRef(null); // 用於存儲定時器的引用
 
   const fetchKeyFromProfile = useCallback(async (isRetry = false) => {
-    if (isFetching && !isRetry && !initialAttempt) return; // 避免在非初始/非重試時重複觸發
+    // 如果正在獲取，則不重複觸發
+    if (isFetching && !isRetry) return; // 如果是手動重試，即使 isFetching 也執行
+
     setIsFetching(true);
-    // 根據是否重試更新狀態消息
-    const statusMsg = isRetry ? '正在自動重試獲取 API Key...' : '正在從個人資料獲取 API Key...';
-    onStatusUpdate(statusMsg);
+    if (!isRetry) { // 只有在非自動重試時才立即更新狀態
+        onStatusUpdate('正在從個人資料獲取 API Key...');
+    }
 
     try {
       const response = await fetch(`${GRIST_API_BASE_URL}/api/profile/apiKey`, {
@@ -25,56 +29,118 @@ const GristApiKeyManager = React.forwardRef(({ apiKey, onApiKeyUpdate, onStatusU
         headers: { 'Accept': 'text/plain' },
       });
       const responseText = await response.text();
-      console.log('API Key fetch response: ', responseText.substring(0, 100) + '...');
+      console.log('response from /api/profile/apiKey: ', responseText);
       if (!response.ok) {
-        // 重要: 將認證失敗的特定信號傳遞給父組件
-        onApiKeyUpdate('', response.status === 401 || response.status === 403);
         throw new Error(`HTTP ${response.status}: ${responseText || '無法獲取 API Key'}`);
       }
       const fetchedKey = responseText.trim();
       if (!fetchedKey || fetchedKey.includes('<') || fetchedKey.length < 32) {
-        onApiKeyUpdate(''); // Key 無效也算獲取失敗
         throw new Error('獲取到的 API Key 似乎無效。');
       }
       setLocalApiKey(fetchedKey);
-      onApiKeyUpdate(fetchedKey); // 成功
+      onApiKeyUpdate(fetchedKey, true); // 第二個參數表示是自動獲取的成功
       onStatusUpdate('API Key 自動獲取成功！');
+      clearTimeout(retryTimerRef.current); // 成功獲取後清除定時器
+      return true; // 表示成功
     } catch (error) {
-      console.error("Error fetching API key from profile:", error);
-      onStatusUpdate(`獲取 API Key 失敗: ${error.message}.`);
-      // 確保在 catch 中也調用 onApiKeyUpdate('')，如果之前未調用
-      // 這裡的 onApiKeyUpdate 已經在 !response.ok 中處理了，除非 fetch 本身拋錯
-      if (!(error.message.includes('HTTP 401') || error.message.includes('HTTP 403'))) {
-         // 如果不是已知的認證錯誤，也標記為一般失敗
-         if (apiKey) onApiKeyUpdate(''); // 如果之前有key，清空
+      console.error("Error fetching API key from profile (attempt):", error.message);
+      if (!isRetry) { // 只有在非自動重試的失敗時才更新狀態，避免頻繁刷新狀態文本
+        onStatusUpdate(`自動獲取 API Key 失敗: ${error.message}. 請確保您已登入 Grist。`);
       }
+      onApiKeyUpdate('', false); // 第二個參數表示自動獲取失敗
+      return false; // 表示失敗
     } finally {
       setIsFetching(false);
     }
-  }, [apiKey, onApiKeyUpdate, onStatusUpdate, initialAttempt]); // apiKey 移出，因為其變化由父組件控制
+  }, [onApiKeyUpdate, onStatusUpdate, isFetching]); // isFetching 加入依賴避免閉包問題
 
-  const handleManualSubmit = () => { /* ... (remains the same) ... */ };
-  useEffect(() => { setLocalApiKey(apiKey || ''); }, [apiKey]);
-
-  useEffect(() => {
-    if (initialAttempt && !apiKey && !localStorage.getItem('gristApiKey')) {
-      console.log('GristApiKeyManager: Initial attempt to fetch API key via prop.');
-      fetchKeyFromProfile(false); // false 表示不是重試
+  const handleManualSubmit = () => {
+    clearTimeout(retryTimerRef.current); // 手動設定時也清除定時器
+    const trimmedKey = localApiKey.trim();
+    if (trimmedKey) {
+      onApiKeyUpdate(trimmedKey, false); // 手動設定的成功
+      onStatusUpdate('手動輸入的 API Key 已設定。');
+    } else {
+      onStatusUpdate('請輸入有效的 API Key。');
     }
-  }, [initialAttempt, apiKey, fetchKeyFromProfile]);
+  };
+  
+  useEffect(() => {
+    setLocalApiKey(apiKey || '');
+  }, [apiKey]);
+
+  // 組件掛載時以及 initialAttemptFailed 狀態改變時嘗試獲取 API Key
+  useEffect(() => {
+    // 如果已有 apiKey (可能來自 localStorage 且有效)，則不自動執行
+    if (apiKey) {
+        clearTimeout(retryTimerRef.current);
+        return;
+    }
+
+    // 初始嘗試獲取
+    fetchKeyFromProfile().then(success => {
+        if (!success && initialAttemptFailed) { // 如果首次嘗試失敗，並且父組件允許開始重試
+            // 啟動定時重試
+            if (retryTimerRef.current) clearTimeout(retryTimerRef.current); // 清除舊的
+            retryTimerRef.current = setTimeout(function zichzelf() {
+                console.log("Retrying to fetch API key...");
+                fetchKeyFromProfile(true).then(retrySuccess => { // 標記為重試
+                    if (!retrySuccess && localStorage.getItem('gristLoginPopupOpen') === 'true') { // 只有在彈窗仍然打開時才繼續重試
+                        retryTimerRef.current = setTimeout(zichzelf, API_KEY_RETRY_INTERVAL);
+                    } else if (retrySuccess) {
+                        localStorage.removeItem('gristLoginPopupOpen');
+                    }
+                });
+            }, API_KEY_RETRY_INTERVAL);
+        }
+    });
+    
+    // 組件卸載時清除定時器
+    return () => {
+      clearTimeout(retryTimerRef.current);
+    };
+  }, [apiKey, fetchKeyFromProfile, initialAttemptFailed]); // 依賴 apiKey 和 fetchKeyFromProfile 和 initialAttemptFailed
 
   React.useImperativeHandle(ref, () => ({
-    triggerFetchKeyFromProfile: (isRetry = false) => fetchKeyFromProfile(isRetry)
+    triggerFetchKeyFromProfile: () => {
+        clearTimeout(retryTimerRef.current); // 手動觸發時，清除自動重試
+        return fetchKeyFromProfile();
+    },
+    stopRetrying: () => { // 新增一個方法來停止重試
+        clearTimeout(retryTimerRef.current);
+    }
   }));
 
-  return ( <div style={{ /* ... GristApiKeyManager JSX ... */ }}> {/* ... */} </div> );
+  return (
+    <div style={{ /* ... (styles remain the same) ... */ }}>
+      <h4 style={{ /* ... */ }}>API Key 管理</h4>
+      <p style={{ /* ... */ }}>
+        若要啟用 "自動獲取"，請先登入您的 Grist 實例 (<code>{GRIST_API_BASE_URL}</code>)。
+        或從 Grist 個人資料頁面手動複製 API Key。
+      </p>
+      <input
+        type="password"
+        value={localApiKey}
+        onChange={(e) => setLocalApiKey(e.target.value)}
+        placeholder="在此輸入或貼上 Grist API Key"
+        style={{ /* ... */ }}
+      />
+      <button onClick={handleManualSubmit} style={{ /* ... */ }}>
+        設定手動 Key
+      </button>
+      {/* 我們不再需要這個按鈕，因為會自動嘗試 */}
+      {/* <button onClick={fetchKeyFromProfile} disabled={isFetching} style={{ ... }}>
+        {isFetching ? '正在獲取...' : '自動獲取 API Key'}
+      </button> */}
+    </div>
+  );
 });
 
 
 function GristDynamicSelectorViewer() {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('gristApiKey') || '');
-  const [statusMessage, setStatusMessage] = useState('正在初始化...');
-  // ... (other states remain the same) ...
+  // ... (other states) ...
+  const [statusMessage, setStatusMessage] = useState('');
   const [currentOrgId, setCurrentOrgId] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [selectedDocId, setSelectedDocId] = useState('');
@@ -90,176 +156,131 @@ function GristDynamicSelectorViewer() {
   const [dataError, setDataError] = useState('');
 
 
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const apiKeyManagerRef = useRef(null);
-  const loginPopupRef = useRef(null);
-  const retryTimerRef = useRef(null);
-  const [isAttemptingLoginFlow, setIsAttemptingLoginFlow] = useState(false); // 新狀態：是否正在登入流程中
+  const gristLoginPopupRef = useRef(null); // 存儲彈出視窗的引用
+  const [initialApiKeyAttemptFailed, setInitialApiKeyAttemptFailed] = useState(false); // 新狀態
 
-  const handleApiKeyUpdate = useCallback((key, fetchFailedDueToAuth = false) => {
+
+  const handleApiKeyUpdate = useCallback((key, autoFetchedSuccess = false) => {
     setApiKey(key);
-
     if (key) {
       localStorage.setItem('gristApiKey', key);
-      setStatusMessage('API Key 已獲取成功！準備載入數據。');
-      setIsAttemptingLoginFlow(false); // 成功獲取，結束登入流程標記
-      clearTimeout(retryTimerRef.current); // 清除定時器
-      retryTimerRef.current = null;
+      setShowLoginPrompt(false); // 獲取成功，隱藏提示
+      setInitialApiKeyAttemptFailed(false); // 重置失敗標記
 
-      if (loginPopupRef.current && !loginPopupRef.current.closed) {
-        console.log('API Key 獲取成功，嘗試關閉登入彈窗...');
+      // 如果是自動獲取成功並且彈出視窗存在，嘗試關閉它
+      if (autoFetchedSuccess && gristLoginPopupRef.current && !gristLoginPopupRef.current.closed) {
+        // 這裡的自動關閉可能並不可靠，因為 Grist 登入後可能跳轉了域名
+        // 瀏覽器通常不允許一個視窗關閉不是由它自己打開的、且域名不同的視窗
+        // 但如果 Grist 登入後跳回同源（例如 /app/login-success），則可能成功
         try {
-            loginPopupRef.current.close(); // 嘗試關閉
+            gristLoginPopupRef.current.close();
+            localStorage.removeItem('gristLoginPopupOpen');
+            console.log("Attempted to close Grist login popup.");
         } catch (e) {
-            console.warn("無法自動關閉登入彈窗 (可能因跨域限制): ", e);
-            setStatusMessage('API Key 獲取成功！請手動關閉 Grist 登入視窗。');
+            console.warn("Could not automatically close Grist login popup:", e);
+            setStatusMessage("Grist 登入成功！您可以手動關閉登入視窗。");
         }
-        loginPopupRef.current = null;
+        gristLoginPopupRef.current = null; // 清除引用
       }
-    } else {
+       if (autoFetchedSuccess) {
+           setStatusMessage('API Key 自動獲取成功！'); // 這個訊息可能會覆蓋 GristApiKeyManager 的
+       }
+
+    } else if (!autoFetchedSuccess) { // 只有在非自動獲取成功的情況 (例如手動清除或初始失敗) 才顯示 prompt
       localStorage.removeItem('gristApiKey');
-      if (fetchFailedDueToAuth && !isAttemptingLoginFlow) { // 只有在因為認證失敗且尚未啟動登入流程時
-        setIsAttemptingLoginFlow(true); // 開始登入流程
-        setStatusMessage('Grist 尚未登入或會話過期。將嘗試打開登入視窗並定時重試...');
-        // 立即嘗試打開一次，並啟動定時器
-        openGristLoginPopup(); // 嘗試打開彈窗
-        if (!retryTimerRef.current) scheduleApiKeyRetry(); // 啟動定時重試
-      } else if (!fetchFailedDueToAuth) {
-        setStatusMessage('API Key 無法獲取。請檢查網路或手動輸入。');
-        // 對於非認證錯誤，停止定時器 (如果正在運行)
-        clearTimeout(retryTimerRef.current);
-        retryTimerRef.current = null;
-        setIsAttemptingLoginFlow(false);
+      setShowLoginPrompt(true);
+      // 如果不是因為自動獲取循環導致的 key 為空，我們才標記初次嘗試失敗
+      if (!localStorage.getItem('gristLoginPopupOpen')) { // 避免在彈窗打開時，因定時重試失敗而錯誤標記
+          setInitialApiKeyAttemptFailed(true);
       }
-      // 如果 isAttemptingLoginFlow 已經是 true，表示定時器已經在運行，這裡不需要重複啟動
     }
-    // 清理相關狀態
+    // 清理相關狀態 (保持不變)
     setCurrentOrgId(null);
     setDocuments([]);
-    // ...
-  }, [isAttemptingLoginFlow]); // 添加 isAttemptingLoginFlow
+    setSelectedDocId('');
+    // ... (rest of cleanup)
+  }, []);
 
-  const openGristLoginPopup = useCallback(() => {
-    if (loginPopupRef.current && !loginPopupRef.current.closed) {
-      try { loginPopupRef.current.focus(); } catch(e) { /* ignore focus error */ }
-      console.log("登入彈窗已開啟。");
+  // ... (makeGristApiRequest and data fetching useEffects remain the same) ...
+
+  const openGristLoginPopup = () => {
+    if (gristLoginPopupRef.current && !gristLoginPopupRef.current.closed) {
+      gristLoginPopupRef.current.focus();
       return;
     }
     const loginUrl = `${GRIST_API_BASE_URL}/login`;
-    console.log("嘗試打開 Grist 登入彈窗:", loginUrl);
-    loginPopupRef.current = window.open(loginUrl, 'GristLoginPopup', 'width=600,height=700,scrollbars=yes,resizable=yes,noopener,noreferrer');
-    if (!loginPopupRef.current) {
-        setStatusMessage('無法打開 Grist 登入視窗，可能已被瀏覽器阻止。請檢查瀏覽器設定並嘗試手動登入 Grist。');
-        setIsAttemptingLoginFlow(false); // 如果彈窗失敗，停止登入流程標記
-        clearTimeout(retryTimerRef.current); // 並停止重試
-        retryTimerRef.current = null;
-    } else {
-        setStatusMessage('已打開 Grist 登入視窗。系統將每 3 秒自動檢查登入狀態。');
-    }
-  }, []);
-
-  const scheduleApiKeyRetry = useCallback(() => {
-    clearTimeout(retryTimerRef.current); // 清除舊的
+    gristLoginPopupRef.current = window.open(loginUrl, 'GristLoginPopup', 'width=600,height=700,scrollbars=yes,resizable=yes,noopener,noreferrer');
+    localStorage.setItem('gristLoginPopupOpen', 'true'); // 標記彈窗已打開
+    setStatusMessage('請在新視窗中完成 Grist 登入。本頁面將嘗試自動檢測登入狀態。');
     
-    retryTimerRef.current = setTimeout(() => {
-      if (apiKey) { // 如果在這 3 秒內通過其他方式獲取到了 key
-        setIsAttemptingLoginFlow(false);
-        return;
-      }
-      
-      console.log('定時器觸發: 嘗試獲取 API Key...');
-      if (apiKeyManagerRef.current) {
-        apiKeyManagerRef.current.triggerFetchKeyFromProfile(true); // true 表示是重試
-      }
-      // 定時器會持續，直到 apiKey 獲取成功 (handleApiKeyUpdate 中清除)
-      // 或者直到用戶手動輸入 API Key
-      // 這裡不需要遞歸調用 scheduleApiKeyRetry，因為 handleApiKeyUpdate 會在失敗時重新評估是否繼續
-      // 但如果 triggerFetchKeyFromProfile 失敗且不是因為認證，我們可能需要停止
-      // 這個邏輯現在主要放在 handleApiKeyUpdate 中
-      if (isAttemptingLoginFlow && !apiKey) { // 只有在登入流程中且還沒拿到 key 才繼續安排下一次
-        scheduleApiKeyRetry();
-      }
-
-    }, 3000); // 每 3 秒
-  }, [apiKey, isAttemptingLoginFlow]); // 依賴 apiKey 和 isAttemptingLoginFlow
-
-  // 初始觸發
-  useEffect(() => {
-    // 讓 GristApiKeyManager 組件的 initialAttempt prop 來處理首次嘗試
-    // GristDynamicSelectorViewer 主要響應 GristApiKeyManager 的結果
-    // 如果初始 localStorage 就有 key，GristApiKeyManager 不會觸發 initialAttempt 的 fetch
-    // 但我們仍然希望驗證這個 key，或者如果它是空的，則啟動獲取流程
-    if (!localStorage.getItem('gristApiKey') && !apiKey) {
-        if (apiKeyManagerRef.current && !isAttemptingLoginFlow) { // 避免在已啟動流程時重複觸發
-            // 這裡模擬一個初始的獲取失敗（因認證），以啟動登入流程
-            // 實際上 GristApiKeyManager 的 initialAttempt 應該先執行
-            // 如果 GristApiKeyManager 的 initialAttempt 失敗且是因認證，handleApiKeyUpdate 會啟動流程
-            // setIsAttemptingLoginFlow(true);
-            // openGristLoginPopup();
-            // scheduleApiKeyRetry();
-            // 更好的方式是依賴 GristApiKeyManager 首次嘗試的結果
-            setStatusMessage("正在等待首次 API Key 獲取嘗試...");
-        }
-    } else if (localStorage.getItem('gristApiKey') && !apiKey) {
-        // 有 localStorage key 但 state 中沒有，可能是頁面剛加載
-        // GristApiKeyManager 的 apiKey prop 會是空的，它應該會嘗試用 localStorage 的 key
-        // 或者它的 initialAttempt=true 會觸發 fetch (如果 localStorage 是空的)
+    // 彈窗打開後，確保 GristApiKeyManager 中的重試邏輯被觸發 (如果之前沒有失敗過)
+    // 或者，如果它已經在重試，則讓它繼續
+    setInitialApiKeyAttemptFailed(true); // 觸發 GristApiKeyManager 的重試邏輯 (如果它監聽這個)
+    if (apiKeyManagerRef.current) { // 如果需要，可以強制觸發一次
+        // apiKeyManagerRef.current.triggerFetchKeyFromProfile();
     }
 
-  }, []); // 空依賴，僅在掛載時執行一次初始判斷（如果需要）
+    // 監測彈窗是否被用戶手動關閉
+    const checkPopupClosedInterval = setInterval(() => {
+        if (gristLoginPopupRef.current && gristLoginPopupRef.current.closed) {
+            clearInterval(checkPopupClosedInterval);
+            localStorage.removeItem('gristLoginPopupOpen');
+            gristLoginPopupRef.current = null;
+            // 如果 API Key 仍未獲取，用戶可能放棄了登入
+            if (!apiKey) {
+                setStatusMessage('Grist 登入視窗已關閉。如果尚未登入，請重試。');
+                // 可以在這裡選擇停止 GristApiKeyManager 的重試
+                if (apiKeyManagerRef.current) {
+                    apiKeyManagerRef.current.stopRetrying();
+                }
+                setInitialApiKeyAttemptFailed(false); // 重置，下次點擊按鈕時重新開始流程
+            }
+        }
+    }, 1000);
+  };
 
-  // 組件卸載時清除定時器
+  // 初始加載時，如果 localStorage 中沒有 key，則標記初始嘗試可能失敗，以觸發 GristApiKeyManager 的邏輯
   useEffect(() => {
-    return () => {
-      clearTimeout(retryTimerRef.current);
-      if (loginPopupRef.current && !loginPopupRef.current.closed) {
-        try { loginPopupRef.current.close(); } catch(e) {/* ignore */}
-      }
-    };
-  }, []);
+    if (!localStorage.getItem('gristApiKey') && !apiKey) {
+      setInitialApiKeyAttemptFailed(true);
+    }
+  }, []); // 空依賴，僅執行一次
 
-
-  // ... (makeGristApiRequest and other data fetching useEffects remain the same) ...
 
   return (
-    <div style={{ /* ... */ }}>
-      {/* ... (h1 and p for title and API target remain the same) ... */}
-      <h1 style={{ /* ... */ }}> Grist 數據動態選擇查看器 </h1>
-      <p style={{ /* ... */ }}> API 目標: <code>{GRIST_API_BASE_URL}</code> (目標組織域名: <code>{TARGET_ORG_DOMAIN || '未指定'}</code>) </p>
+    <div style={{ /* ... (styles) ... */ }}>
+      <h1 style={{ /* ... */ }}>Grist 數據動態選擇查看器</h1>
+      <p style={{ /* ... */ }}>
+        API 目標: <code>{GRIST_API_BASE_URL}</code> (目標組織域名: <code>{TARGET_ORG_DOMAIN || '未指定'}</code>)
+      </p>
 
-      {statusMessage && ( <p style={{ /* ... status message styles ... */ }}> {statusMessage} </p> )}
+      {statusMessage && ( <p style={{ /* ... (status message styles) ... */ }}> {statusMessage} </p> )}
 
       <GristApiKeyManager
         ref={apiKeyManagerRef}
         apiKey={apiKey}
         onApiKeyUpdate={handleApiKeyUpdate}
         onStatusUpdate={setStatusMessage}
-        initialAttempt={!apiKey && !localStorage.getItem('gristApiKey')} // 只有在完全無key時才觸發首次嘗試
+        initialAttemptFailed={initialApiKeyAttemptFailed} // 將此狀態傳遞給子組件
       />
 
-      {/* 移除之前的登入提示區塊，因為流程是自動的 */}
-      {/* 如果需要一個手動觸發的按鈕，以防自動流程卡住，可以考慮保留一個 */}
-      {isAttemptingLoginFlow && !apiKey && (
-          <div style={{padding: '10px', textAlign: 'center', border: '1px solid orange', margin: '10px 0'}}>
-              <p>正在嘗試自動連接 Grist。如果 Grist 登入視窗未自動彈出或長時間無反應，請檢查瀏覽器彈窗設定，或嘗試手動在另一分頁登入 Grist ({GRIST_API_BASE_URL}) 後刷新此頁面。</p>
-              <button onClick={openGristLoginPopup} style={{marginRight: '10px'}}>手動打開 Grist 登入視窗</button>
-              <button onClick={() => { // 手動觸發一次檢查
-                  if(apiKeyManagerRef.current) apiKeyManagerRef.current.triggerFetchKeyFromProfile(false);
-              }}>
-                  手動檢查登入狀態
-              </button>
-          </div>
-      )}
-
-
-      {apiKey ? (
-        <div style={{ /* ... (styles for data source selection remain the same) ... */ }}>
-          {/* ... (All the selectors and data display JSX) ... */}
+      {showLoginPrompt && !apiKey && (
+        <div style={{ /* ... (login prompt styles) ... */ }}>
+          <p style={{ /* ... */ }}>
+            您似乎尚未登入 Grist，或者 API Key 無法自動獲取。
+          </p>
+          <button onClick={openGristLoginPopup} style={{ /* ... */ }} >
+            開啟 Grist 登入視窗
+          </button>
+          {/* “刷新/重試”按鈕可以移除，因為 GristApiKeyManager 會自動重試 */}
+          {/* 如果確實需要一個手動觸發，可以保留，並調用 apiKeyManagerRef.current.triggerFetchKeyFromProfile() */}
         </div>
-      ) : (
-        // 當 apiKey 為空時，且不在登入流程中，可以顯示一個更通用的等待訊息
-        !isAttemptingLoginFlow && <p style={{textAlign: 'center', color: theme.textColorSubtle, marginTop: '20px'}}>請設定或自動獲取 API Key 以繼續。</p>
       )}
-      {/* ... (The rest of the JSX for displaying data, tables, etc.) ... */}
+
+      {apiKey && ( <div style={{ /* ... (data source selection styles) ... */ }}> {/* ... (rest of the UI) ... */} </div> )}
+      {/* ... (Table display and no-data message) ... */}
     </div>
   );
 }
