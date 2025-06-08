@@ -648,7 +648,7 @@ function GristDynamicSelectorViewer() {
               <label htmlFor="tableSelect" style={{ display: 'block', marginBottom: '8px', color: theme.textColorLight, fontSize: theme.fontSizeSmall, fontWeight: '500' }}>選擇表格:</label>
               <select id="tableSelect" value={selectedTableId} 
                 onChange={(e) => { 
-                    setSelectedTableId(e.target.value); 
+                    setSelectedTableId(e.target..value); 
                     setTableData(null); 
                     setColumns([]);
                     setFilterQuery(''); 
