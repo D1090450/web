@@ -430,7 +430,6 @@ function GristDynamicSelectorViewer() {
     }
     console.log("openGristLoginPopup: No existing open popup, or previous was closed. Proceeding to open a new one.");
 
-    // Clear any existing interval before opening a new popup
     if (popupCheckIntervalRef.current) {
         console.log("openGristLoginPopup: Clearing previous popup check interval.");
         clearInterval(popupCheckIntervalRef.current);
@@ -438,18 +437,72 @@ function GristDynamicSelectorViewer() {
     }
 
     const loginUrl = `${GRIST_API_BASE_URL}/login`;
-    const newPopup = window.open(loginUrl, 'GristLoginPopup', 'width=600,height=700,scrollbars=yes,resizable=yes,noopener,noreferrer');
-    
-    if (!newPopup) {
-        console.error("openGristLoginPopup: window.open failed. Popup might be blocked by the browser.");
-        setStatusMessage('無法開啟 Grist 登入視窗，可能已被瀏覽器攔截。請檢查您的彈窗設定。');
+    console.log(`openGristLoginPopup: Attempting to open popup with URL: ${loginUrl}`);
+    let newPopup = null; // 初始化為 null
+    try {
+        newPopup = window.open(loginUrl, 'GristLoginPopup', 'width=600,height=700,scrollbars=yes,resizable=yes,noopener,noreferrer');
+    } catch (error) {
+        console.error("openGristLoginPopup: Error during window.open call:", error);
+        setStatusMessage(`開啟 Grist 登入視窗時發生錯誤: ${error.message}`);
         gristLoginPopupRef.current = null;
         localStorage.removeItem('gristLoginPopupOpen');
         return;
     }
+    
+    // ---- START EXTENDED DEBUGGING for window.open ----
+    console.log("openGristLoginPopup: window.open executed.");
+    console.log("   Direct return value (newPopup):", newPopup);
+    console.log("   typeof newPopup:", typeof newPopup);
 
+    if (newPopup) {
+        console.log("   newPopup is truthy. Attempting to access properties (may fail due to cross-origin restrictions if loginUrl is different domain & no opener):");
+        try {
+            // 在 noopener 的情況下，這些訪問可能會受限或返回預設值
+            console.log("     newPopup.closed (initial):", newPopup.closed); 
+            console.log("     newPopup.opener (should be null due to noopener):", newPopup.opener);
+            console.log("     newPopup.length (number of frames, usually 0 for simple pages):", newPopup.length);
+        } catch (e) {
+            console.warn("     Error accessing newPopup properties immediately after open. This is common with 'noopener' or cross-origin popups:", e.message);
+        }
+    } else {
+        console.warn("   newPopup is falsy (e.g., null or undefined). This usually means the popup was blocked or failed to open.");
+        // 如果這裡執行了，並且你確定彈窗真的視覺上打開了，這是最需要關注的矛盾點。
+    }
+    // ---- END EXTENDED DEBUGGING for window.open ----
+
+    // 重新評估 newPopup 的有效性
+    // 有時，即使 newPopup 不是 null，它也可能是一個無效的窗口句柄
+    // 一個更可靠的檢查可能是看它是否真的有 .closed 屬性 (即使可能訪問受限)
+    let isPopupConsideredValid = false;
+    if (newPopup && typeof newPopup === 'object') { // 基本檢查它是一個對象
+        try {
+            // 嘗試一個無害的操作，比如檢查 'closed' 屬性是否存在。
+            // 即使是跨域的 noopener 彈窗，.closed 屬性應該是存在的（儘管值可能不可靠）。
+            // 如果 newPopup 是 null， `newPopup.closed` 會直接拋 TypeError。
+            // 如果 newPopup 是一個真正無效的句柄，這裡也可能出錯。
+             // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+            typeof newPopup.closed; // 只是為了觸發可能的錯誤
+            isPopupConsideredValid = true;
+            console.log("   Popup considered potentially valid based on object type and property access attempt.");
+        } catch (e) {
+            console.warn("   Popup considered invalid because accessing its properties (like .closed) failed:", e.message);
+            isPopupConsideredValid = false;
+        }
+    }
+
+
+    if (!isPopupConsideredValid) { 
+        console.error("openGristLoginPopup: Final check - newPopup is NOT considered a valid window object. The message 'window.open failed' will be shown.");
+        setStatusMessage('無法開啟 Grist 登入視窗，可能已被瀏覽器攔截或開啟失敗。請檢查您的彈窗設定。');
+        gristLoginPopupRef.current = null; 
+        localStorage.removeItem('gristLoginPopupOpen');
+        // 如果彈窗確實打開了，但這裡執行了，可以嘗試在視覺上確認彈窗後手動模擬一個句柄，但這很 hacky
+        // 例如： if (confirm("彈窗是否已手動開啟？")) { /* ... hacky logic ... */ }
+        return;
+    }
+
+    console.log("openGristLoginPopup: newPopup appears valid. Assigning to ref and setting up interval.");
     gristLoginPopupRef.current = newPopup;
-    console.log("openGristLoginPopup: Popup opened successfully. Ref accessible:", !!gristLoginPopupRef.current);
     localStorage.setItem('gristLoginPopupOpen', 'true'); 
     setStatusMessage('請在新視窗中完成 Grist 登入。本頁面將嘗試自動檢測登入狀態。');
     setInitialApiKeyAttemptFailed(true); 
@@ -458,21 +511,25 @@ function GristDynamicSelectorViewer() {
     
     popupCheckIntervalRef.current = setInterval(() => {
         if (gristLoginPopupRef.current) {
-            // Log current state of the popup ref for debugging
-            // console.log(`DEBUG Interval Check: Popup ref exists. Is closed? ${gristLoginPopupRef.current.closed}. Window object:`, gristLoginPopupRef.current);
-            
-            if (!gristLoginPopupRef.current.closed) {
+            let isClosed = false;
+            try {
+                isClosed = gristLoginPopupRef.current.closed;
+            } catch (e) {
+                console.warn(`Interval Check: Error accessing gristLoginPopupRef.current.closed (popup window might have been navigated to a different origin or closed unexpectedly): ${e.message}. Assuming closed.`);
+                isClosed = true; // 如果無法訪問 .closed，通常意味著無法再與之交互，視為已關閉
+            }
+
+            if (!isClosed) {
                 popupOpenLogCounter++;
-                // console.log(`DEBUG Interval Check: Popup is OPEN. Log counter: ${popupOpenLogCounter}`); // More frequent log for debugging
-                if (popupOpenLogCounter > 0 && popupOpenLogCounter % 2 === 0) { // Trigger every 2 * 1000ms = 2 seconds
+                if (popupOpenLogCounter > 0 && popupOpenLogCounter % 2 === 0) { 
                     console.log(`Grist 登入彈窗目前是開啟狀態 (檢測到於 ${new Date().toLocaleTimeString()})`);
                 }
             } else {
-                console.log(`Interval Check: Popup (ref exists) detected as CLOSED at ${new Date().toLocaleTimeString()}. Clearing interval.`);
+                console.log(`Interval Check: Popup (ref exists) detected as CLOSED at ${new Date().toLocaleTimeString()} (isClosed=${isClosed}). Clearing interval.`);
                 clearInterval(popupCheckIntervalRef.current);
                 popupCheckIntervalRef.current = null;
                 localStorage.removeItem('gristLoginPopupOpen'); 
-                gristLoginPopupRef.current = null; // Important: set ref to null
+                // gristLoginPopupRef.current 已在上面設為 null
                 
                 if (!apiKey) { 
                     setStatusMessage('Grist 登入視窗已關閉。如果尚未登入，請點擊下方按鈕重試。');
@@ -482,19 +539,15 @@ function GristDynamicSelectorViewer() {
                 }
             }
         } else {
-            console.log(`Interval Check: Popup ref is NULL at ${new Date().toLocaleTimeString()}. Clearing interval.`);
-            clearInterval(popupCheckIntervalRef.current);
-            popupCheckIntervalRef.current = null;
-            localStorage.removeItem('gristLoginPopupOpen'); // Ensure this is also cleared if ref is null
-            
-            // No need to check apiKey here usually, as this path means popup was never properly tracked or already cleaned up.
-            // But if it implies a state where retries should stop:
-            if (!apiKey && apiKeyManagerRef.current) { // Check if retries were active
-                 //apiKeyManagerRef.current.stopRetrying(); // This might be too aggressive if popup failed to open
+            console.log(`Interval Check: Popup ref is NULL at ${new Date().toLocaleTimeString()}. Clearing interval if it exists.`);
+            if (popupCheckIntervalRef.current) { // 確保 interval ID 存在才清除
+                clearInterval(popupCheckIntervalRef.current);
+                popupCheckIntervalRef.current = null;
             }
+            localStorage.removeItem('gristLoginPopupOpen');
         }
-    }, 1000); // Interval set to 1 second for counter logic (popupOpenLogCounter % 2)
-  }, [apiKey, setStatusMessage, setInitialApiKeyAttemptFailed]); // Removed GRIST_API_BASE_URL as it's a const
+    }, 1000); 
+  }, [apiKey, setStatusMessage, setInitialApiKeyAttemptFailed, GRIST_API_BASE_URL]); // GRIST_API_BASE_URL 加入依賴 (雖然是 const，但好習慣)
 
   useEffect(() => {
     console.log("GristDynamicSelectorViewer: Initial mount/apiKey check.");
