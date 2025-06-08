@@ -55,7 +55,7 @@ const GristApiKeyManager = React.forwardRef(({ apiKey: apiKeyProp, onApiKeyUpdat
       }
       setLocalApiKey(fetchedKey);
       onApiKeyUpdate(fetchedKey, true); // true for autoFetchedSuccess
-      onStatusUpdate('API Key 自動獲取成功！');
+      // onStatusUpdate('API Key 自動獲取成功！'); // Let parent handle this specific message
       clearTimeout(retryTimerRef.current);
       return true;
     } catch (error) {
@@ -63,19 +63,19 @@ const GristApiKeyManager = React.forwardRef(({ apiKey: apiKeyProp, onApiKeyUpdat
       if (!isRetry) {
         onStatusUpdate(`自動獲取 API Key 失敗: ${error.message}. 請確保您已登入 Grist。`);
       }
-      onApiKeyUpdate('', false); // false for autoFetchedSuccess
+      onApiKeyUpdate('', false);
       return false;
     } finally {
       setIsFetching(false);
     }
-  }, [onApiKeyUpdate, onStatusUpdate]);
+  }, [onApiKeyUpdate, onStatusUpdate]); // isFetching is managed internally
 
   const handleManualSubmit = useCallback(() => {
     clearTimeout(retryTimerRef.current);
     const trimmedKey = localApiKey.trim();
     if (trimmedKey) {
       onApiKeyUpdate(trimmedKey, false);
-      onStatusUpdate('手動輸入的 API Key 已設定。');
+      // onStatusUpdate('手動輸入的 API Key 已設定。'); // Let parent handle
     } else {
       onStatusUpdate('請輸入有效的 API Key。');
     }
@@ -109,8 +109,8 @@ const GristApiKeyManager = React.forwardRef(({ apiKey: apiKeyProp, onApiKeyUpdat
                         }
                     });
                 }, API_KEY_RETRY_INTERVAL);
-            } else { // Initial fetchKeyFromProfile(false) was successful
-                 localStorage.removeItem('gristLoginPopupOpen'); // If popup was open, clear its flag
+            } else {
+                 localStorage.removeItem('gristLoginPopupOpen');
             }
         });
     } else {
@@ -188,8 +188,7 @@ function GristDynamicSelectorViewer() {
     
     if (!popup || popup.closed || typeof popup.closed == 'undefined') {
         setStatusMessage('無法開啟 Grist 登入視窗，可能已被瀏覽器阻擋。請檢查彈窗設定或手動嘗試。');
-        localStorage.removeItem('gristLoginPopupOpen'); // Ensure flag is not set if popup failed
-        // Show prompt for manual interaction if auto-open fails
+        localStorage.removeItem('gristLoginPopupOpen');
         setShowLoginPrompt(true); 
         return;
     }
@@ -197,8 +196,8 @@ function GristDynamicSelectorViewer() {
     gristLoginPopupRef.current = popup;
     localStorage.setItem('gristLoginPopupOpen', 'true'); 
     setStatusMessage('請在新視窗中完成 Grist 登入。本頁面將嘗試自動檢測登入狀態。');
-    setInitialApiKeyAttemptFailed(true); // Crucial for ApiKeyManager to start/continue retries
-    setShowLoginPrompt(false); // Hide manual prompt if popup opens successfully
+    setInitialApiKeyAttemptFailed(true);
+    setShowLoginPrompt(false);
 
     const checkPopupClosedInterval = setInterval(() => {
         if (gristLoginPopupRef.current && gristLoginPopupRef.current.closed) {
@@ -208,54 +207,61 @@ function GristDynamicSelectorViewer() {
             
             if (!currentStoredApiKey) { 
                 setStatusMessage('Grist 登入視窗已關閉。如果尚未成功登入，API Key 可能仍未獲取。');
-                setShowLoginPrompt(true); // Show manual prompt again if closed without success
+                setShowLoginPrompt(true);
             }
             gristLoginPopupRef.current = null;
         }
     }, 1000);
-  }, [setStatusMessage, setInitialApiKeyAttemptFailed, setShowLoginPrompt]);
+  }, [setStatusMessage, setInitialApiKeyAttemptFailed, setShowLoginPrompt]); // All dependencies are stable setters
 
   const handleApiKeyUpdate = useCallback((key, autoFetchedSuccess = false) => {
-    console.log(`GristDynamicSelectorViewer: handleApiKeyUpdate called with key: ${key ? '******' : '""'}, autoFetchedSuccess: ${autoFetchedSuccess}`);
-    setApiKey(key);
+    console.log(`GristDynamicSelectorViewer: handleApiKeyUpdate with key: ${key ? '******' : '""'}, autoFetchedSuccess: ${autoFetchedSuccess}`);
+    
     if (key) {
-      localStorage.setItem('gristApiKey', key);
-      setShowLoginPrompt(false);
-      setInitialApiKeyAttemptFailed(false);
+        setApiKey(key);
+        localStorage.setItem('gristApiKey', key);
+        setShowLoginPrompt(false);
+        setInitialApiKeyAttemptFailed(false);
 
-      if (autoFetchedSuccess && gristLoginPopupRef.current && !gristLoginPopupRef.current.closed) {
-        try {
-            gristLoginPopupRef.current.close();
-            console.log("GristDynamicSelectorViewer: Attempted to close Grist login popup after auto fetch.");
-        } catch (e) {
-            console.warn("GristDynamicSelectorViewer: Could not automatically close Grist login popup:", e);
+        if (autoFetchedSuccess && gristLoginPopupRef.current && !gristLoginPopupRef.current.closed) {
+            try {
+                gristLoginPopupRef.current.close();
+                console.log("GristDynamicSelectorViewer: Attempted to close Grist login popup after auto fetch.");
+            } catch (e) {
+                console.warn("GristDynamicSelectorViewer: Could not automatically close Grist login popup:", e);
+            }
+            localStorage.removeItem('gristLoginPopupOpen');
+            gristLoginPopupRef.current = null;
         }
-        localStorage.removeItem('gristLoginPopupOpen'); // Ensure flag is removed
-        gristLoginPopupRef.current = null;
-      }
        
        if (autoFetchedSuccess) {
-           setStatusMessage(prev => prev.includes('API Key 自動獲取成功！') ? prev : 'API Key 自動獲取成功！正在準備加載數據...');
+           setStatusMessage('API Key 自動獲取成功！正在準備加載數據...');
        } else {
-           setStatusMessage(prev => prev.includes('手動輸入的 API Key 已設定') ? prev : 'API Key 已設定。正在準備加載數據...');
+           // This case is for manual key set by user via input field in GristApiKeyManager
+           setStatusMessage('手動輸入的 API Key 已設定。正在準備加載數據...');
        }
 
-    } else {
-      localStorage.removeItem('gristApiKey');
-      if (!autoFetchedSuccess) { // Only show prompt if it wasn't an auto-fetch failure (which has its own manager messages)
-        setShowLoginPrompt(true);
-      }
-      
-      if (!localStorage.getItem('gristLoginPopupOpen') && !autoFetchedSuccess) {
-          setInitialApiKeyAttemptFailed(true);
-      } else if (localStorage.getItem('gristLoginPopupOpen')) {
-          setInitialApiKeyAttemptFailed(true);
-      }
-      // Avoid overwriting specific messages from ApiKeyManager about fetch failure
-      if (!statusMessage.startsWith('自動獲取 API Key 失敗')) {
-        setStatusMessage(prev => prev.includes('API Key 獲取失敗或已清除') ? prev : 'API Key 獲取失敗或已清除。');
-      }
+    } else { // key is empty
+        localStorage.removeItem('gristApiKey');
+        setApiKey('');
+
+        // If autoFetchedSuccess is false, it means an automated attempt from GristApiKeyManager failed.
+        // The manager itself calls onStatusUpdate with a specific error.
+        // Or, makeGristApiRequest might have called this due to 401/403, and it would set its own status.
+        // We only set a generic message here if autoFetchedSuccess is not explicitly false
+        // (e.g. if key was cleared by some other means, though not currently implemented)
+        if (autoFetchedSuccess !== false) {
+             setStatusMessage('API Key 已清除或無法使用。');
+        }
+        // If autoFetchedSuccess IS false, the more specific error from manager or makeGristApiRequest should remain.
+
+        if (!localStorage.getItem('gristLoginPopupOpen')) {
+            setShowLoginPrompt(true);
+        }
+        setInitialApiKeyAttemptFailed(true); // Signal to manager to retry or that current state is "failed"
     }
+
+    // Common cleanup actions, will run regardless of key presence if handleApiKeyUpdate is called
     setCurrentOrgId(null);
     setDocuments([]);
     setSelectedDocId('');
@@ -265,20 +271,15 @@ function GristDynamicSelectorViewer() {
     setFilterQuery('');
     setSortQuery('');
     setDataError('');
-  }, [setStatusMessage, setShowLoginPrompt, setInitialApiKeyAttemptFailed, statusMessage]); // Added statusMessage to dependencies for conditional update
+  }, [setApiKey, setShowLoginPrompt, setInitialApiKeyAttemptFailed, setCurrentOrgId, setDocuments, setSelectedDocId, setTables, setSelectedTableId, setTableData, setFilterQuery, setSortQuery, setDataError, setStatusMessage]); // All dependencies are stable setters
 
-  // Initial load: if no key, set initialAttemptFailed for ApiKeyManager and AUTO-OPEN login popup.
   useEffect(() => {
-    // apiKey state is initialized from localStorage, so checking !apiKey is sufficient for "no key on load"
     if (!apiKey) {
       console.log("GristDynamicSelectorViewer: Initial mount - No API key. Setting initialAttemptFailed and trying to auto-open login popup.");
-      setInitialApiKeyAttemptFailed(true); // Triggers GristApiKeyManager to attempt fetch
-      
-      if (localStorage.getItem('gristLoginPopupOpen') !== 'true') { // Avoid re-opening if already logically open
+      setInitialApiKeyAttemptFailed(true);
+      if (localStorage.getItem('gristLoginPopupOpen') !== 'true') {
         openGristLoginPopup(); 
       } else {
-        // If popup was already open (e.g. refresh), ensure manager tries
-        // and show prompt in case auto-open is not desired again but want user interaction.
         setShowLoginPrompt(true); 
       }
     } else {
@@ -286,14 +287,12 @@ function GristDynamicSelectorViewer() {
       setInitialApiKeyAttemptFailed(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Runs once on component mount, apiKey is from initial useState
+  }, []); // openGristLoginPopup is stable
 
   const makeGristApiRequest = useCallback(async (endpoint, method = 'GET', params = null) => {
+    // apiKey is a direct dependency from useState, used in the check below.
     if (!apiKey) {
       console.warn("makeGristApiRequest: API Key is not set. Aborting request to", endpoint);
-      // Do not call handleApiKeyUpdate here, as it might create loops if makeGristApiRequest itself is called by something triggered by handleApiKeyUpdate
-      // Instead, rely on the caller to handle the error appropriately, potentially by guiding the user to re-authenticate.
-      // For 401/403 errors, specific handling is below.
       throw new Error('API Key 未設定，無法發送請求。');
     }
     console.log(`makeGristApiRequest: Fetching ${endpoint} with apiKey.`);
@@ -313,7 +312,7 @@ function GristDynamicSelectorViewer() {
     const response = await fetch(url, {
       method,
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${apiKey}`, // apiKey dependency
         'Accept': 'application/json',
         'Content-Type': method !== 'GET' ? 'application/json' : undefined,
       },
@@ -325,25 +324,23 @@ function GristDynamicSelectorViewer() {
         responseData = await response.json();
     } else {
         const text = await response.text();
-        if (!response.ok) { // If not ok and not json, throw with text
+        if (!response.ok) {
             throw new Error(`HTTP error ${response.status}: ${text || response.statusText} (Non-JSON response)`);
         }
-        responseData = text; // If ok and not json, return text (e.g. for apiKey profile endpoint)
+        responseData = text;
     }
 
     if (!response.ok) {
       const errorMsg = responseData?.error?.message || responseData?.error || (typeof responseData === 'string' ? responseData : null) || responseData?.message || `HTTP error ${response.status}`;
       console.error(`Grist API Error for ${method} ${url}:`, responseData);
       if (response.status === 401 || response.status === 403) {
-        // API Key is invalid or unauthorized. Clear it and prompt for login/new key.
-        // Pass false for autoFetchedSuccess, as this is an API usage failure, not an auto-fetch success.
-        handleApiKeyUpdate('', false); 
-        setStatusMessage('API Key 已失效或無權限，請重新登入或設定新的 API Key。');
+        setStatusMessage('API Key 已失效或無權限，請重新登入或設定新的 API Key。'); // Stable setter
+        handleApiKeyUpdate('', false); // Stable callback
       }
       throw new Error(errorMsg);
     }
     return responseData;
-  }, [apiKey, handleApiKeyUpdate, setStatusMessage]); // Added setStatusMessage to dependencies
+  }, [apiKey, handleApiKeyUpdate, setStatusMessage]); // handleApiKeyUpdate & setStatusMessage are stable
 
   // 獲取組織 ID
   useEffect(() => {
@@ -352,11 +349,13 @@ function GristDynamicSelectorViewer() {
       setDocuments([]);
       return;
     }
+    console.log("useEffect (getOrgId): API Key present, attempting to fetch org ID.");
     const getOrgId = async () => {
       setIsLoadingDocs(true);
       setStatusMessage('API Key 有效，正在獲取組織資訊...');
       try {
         const orgsData = await makeGristApiRequest('/api/orgs');
+        console.log("useEffect (getOrgId): Orgs data fetched:", orgsData);
         let determinedOrgId = null;
         if (orgsData && Array.isArray(orgsData) && orgsData.length > 0) {
           if (TARGET_ORG_DOMAIN) {
@@ -371,14 +370,14 @@ function GristDynamicSelectorViewer() {
         }
 
         if (determinedOrgId) {
+          console.log("useEffect (getOrgId): Determined Org ID:", determinedOrgId);
           setCurrentOrgId(determinedOrgId);
         } else {
           throw new Error('未能獲取到有效的組織 ID。');
         }
       } catch (error) {
         console.error('useEffect (getOrgId): Error fetching org ID:', error);
-        // Status message might have been set by makeGristApiRequest for 401/403
-        if (!String(error.message).includes('API Key 已失效')) {
+        if (!String(error.message).includes('API Key 已失效')) { // Avoid double message if makeGristApiRequest handled it
             setStatusMessage(`獲取組織 ID 失敗: ${error.message}`);
         }
         setCurrentOrgId(null);
@@ -387,19 +386,22 @@ function GristDynamicSelectorViewer() {
       }
     };
     getOrgId();
-  }, [apiKey, makeGristApiRequest, setStatusMessage]); // Added setStatusMessage
+  }, [apiKey, makeGristApiRequest, setStatusMessage]); // makeGristApiRequest & setStatusMessage are stable
 
   // 獲取文檔列表
   useEffect(() => {
     if (!currentOrgId || !apiKey) {
+      console.log("useEffect (fetchDocs): No currentOrgId or no API Key, skipping.");
       setDocuments([]);
       return;
     }
+    console.log("useEffect (fetchDocs): currentOrgId present, attempting to fetch documents for org:", currentOrgId);
     const fetchDocsFromWorkspaces = async () => {
       setIsLoadingDocs(true);
       setStatusMessage(`正在從組織 ID ${currentOrgId} 獲取文檔列表...`);
       try {
         const workspacesData = await makeGristApiRequest(`/api/orgs/${currentOrgId}/workspaces`);
+        console.log("useEffect (fetchDocs): Workspaces data fetched:", workspacesData);
         const allDocs = [];
         let docNameCounts = {};
         workspacesData.forEach(workspace => {
@@ -433,38 +435,40 @@ function GristDynamicSelectorViewer() {
       }
     };
     fetchDocsFromWorkspaces();
-  }, [currentOrgId, apiKey, makeGristApiRequest, setStatusMessage]); // Added setStatusMessage
+  }, [currentOrgId, apiKey, makeGristApiRequest, setStatusMessage]); // Dependencies are ID, apiKey, and stable callbacks
 
   // 獲取表格列表
   useEffect(() => {
     if (!selectedDocId || !apiKey) {
+      console.log("useEffect (fetchTables): No selectedDocId or no API Key, skipping.");
       setTables([]);
       setSelectedTableId('');
       return;
     }
+    console.log("useEffect (fetchTables): selectedDocId present, attempting to fetch tables for doc:", selectedDocId);
     const fetchTables = async () => {
       setIsLoadingTables(true);
       setStatusMessage(`正在獲取文檔 "${selectedDocId}" 的表格列表...`);
       setDataError('');
       try {
         const data = await makeGristApiRequest(`/api/docs/${selectedDocId}/tables`);
+        console.log("useEffect (fetchTables): Tables data fetched:", data);
         const tableList = data.tables || (Array.isArray(data) ? data : []);
         if (Array.isArray(tableList)) {
-          setTables(tableList.map(table => ({ id: table.id, name: table.id }))); // Assuming table.id is the desired name for display
+          setTables(tableList.map(table => ({ id: table.id, name: table.id })));
           setStatusMessage(tableList.length > 0 ? '表格列表獲取成功。' : '該文檔中未找到表格。');
         } else { throw new Error('表格列表格式不正確。'); }
       } catch (error) {
         console.error('useEffect (fetchTables): Error fetching tables:', error);
-        if (!String(error.message).includes('API Key 已失效')) {
+         if (!String(error.message).includes('API Key 已失效')) {
             setStatusMessage(`獲取表格列表失敗: ${error.message}`);
         }
         setTables([]);
       } finally { setIsLoadingTables(false); }
     };
     fetchTables();
-  }, [selectedDocId, apiKey, makeGristApiRequest, setStatusMessage]); // Added setStatusMessage
+  }, [selectedDocId, apiKey, makeGristApiRequest, setStatusMessage]); // Dependencies are ID, apiKey, and stable callbacks
 
-  // 獲取表格數據 (按鈕觸發)
   const handleFetchTableData = useCallback(async () => {
     if (!apiKey || !selectedDocId || !selectedTableId) {
       setDataError('請先設定 API Key 並選擇文檔和表格。');
@@ -475,10 +479,10 @@ function GristDynamicSelectorViewer() {
     setTableData(null);
     setColumns([]);
     setStatusMessage(`正在獲取 ${selectedTableId} 的數據...`);
-    const params = { limit: '50' }; // Keep limit, or make it configurable
+    const params = { limit: '50' };
     if (filterQuery) { 
         try { 
-            JSON.parse(filterQuery); // Validate JSON
+            JSON.parse(filterQuery);
             params.filter = filterQuery; 
         } catch (e) { 
             setDataError('過濾條件不是有效的 JSON 格式.'); 
@@ -509,7 +513,7 @@ function GristDynamicSelectorViewer() {
         }
         setTableData([]); 
     } finally { setIsLoadingData(false); }
-  }, [apiKey, selectedDocId, selectedTableId, makeGristApiRequest, filterQuery, sortQuery, setStatusMessage]); // Added setStatusMessage
+  }, [apiKey, selectedDocId, selectedTableId, makeGristApiRequest, filterQuery, sortQuery, setStatusMessage]); // makeGristApiRequest and setStatusMessage are stable
 
 
   return (
@@ -521,13 +525,13 @@ function GristDynamicSelectorViewer() {
         API 目標: <code>{GRIST_API_BASE_URL}</code> (目標組織域名: <code>{TARGET_ORG_DOMAIN || '未指定'}</code>)
       </p>
 
-      {statusMessage && ( <p style={{ padding: '12px 15px', backgroundColor: statusMessage.includes('失敗') || statusMessage.includes('錯誤') || statusMessage.includes('尚未登入') || statusMessage.includes('已失效') ? theme.errorColorBg : theme.successColorBg, border: `1px solid ${statusMessage.includes('失敗') || statusMessage.includes('錯誤') || statusMessage.includes('尚未登入') || statusMessage.includes('已失效') ? theme.errorColor : theme.successColor}`, color: statusMessage.includes('失敗') || statusMessage.includes('錯誤') || statusMessage.includes('尚未登入') || statusMessage.includes('已失效') ? theme.errorColor : theme.successColor, marginTop: '10px', marginBottom: '20px', borderRadius: theme.borderRadius, fontSize: theme.fontSizeSmall, textAlign: 'center', }}> {statusMessage} </p> )}
+      {statusMessage && ( <p style={{ padding: '12px 15px', backgroundColor: statusMessage.includes('失敗') || statusMessage.includes('錯誤') || statusMessage.includes('尚未登入') || statusMessage.includes('已失效') || statusMessage.includes('無法使用') ? theme.errorColorBg : theme.successColorBg, border: `1px solid ${statusMessage.includes('失敗') || statusMessage.includes('錯誤') || statusMessage.includes('尚未登入') || statusMessage.includes('已失效') || statusMessage.includes('無法使用') ? theme.errorColor : theme.successColor}`, color: statusMessage.includes('失敗') || statusMessage.includes('錯誤') || statusMessage.includes('尚未登入') || statusMessage.includes('已失效') || statusMessage.includes('無法使用') ? theme.errorColor : theme.successColor, marginTop: '10px', marginBottom: '20px', borderRadius: theme.borderRadius, fontSize: theme.fontSizeSmall, textAlign: 'center', }}> {statusMessage} </p> )}
 
       <GristApiKeyManager
         ref={apiKeyManagerRef}
         apiKey={apiKey}
-        onApiKeyUpdate={handleApiKeyUpdate}
-        onStatusUpdate={setStatusMessage}
+        onApiKeyUpdate={handleApiKeyUpdate} // Stable
+        onStatusUpdate={setStatusMessage} // Stable setter
         initialAttemptFailed={initialApiKeyAttemptFailed}
       />
 
@@ -542,7 +546,6 @@ function GristDynamicSelectorViewer() {
           <button 
             onClick={() => apiKeyManagerRef.current && apiKeyManagerRef.current.triggerFetchKeyFromProfile()}
             style={{ padding: '10px 15px', backgroundColor: '#6c757d', color: theme.primaryColorText, border: 'none', borderRadius: theme.borderRadius, cursor: 'pointer'}}
-            disabled={!initialApiKeyAttemptFailed && apiKeyManagerRef.current === null} // Disable if no attempt was marked as failed by logic
           >
             手動重試獲取 API Key
           </button>
