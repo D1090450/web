@@ -445,10 +445,19 @@ function GristDynamicSelectorViewer() {
     gristLoginPopupRef.current = window.open(loginUrl, 'GristLoginPopup', 'width=600,height=700,scrollbars=yes,resizable=yes,noopener,noreferrer');
     localStorage.setItem('gristLoginPopupOpen', 'true'); 
     setStatusMessage('請在新視窗中完成 Grist 登入。本頁面將嘗試自動檢測登入狀態。');
-    setInitialApiKeyAttemptFailed(true); // 確保 GristApiKeyManager 會開始重試
+    setInitialApiKeyAttemptFailed(true); 
+
+    let popupOpenLogCounter = 0; // <--- 新增一個計數器
 
     const checkPopupClosedInterval = setInterval(() => {
-        if (gristLoginPopupRef.current && gristLoginPopupRef.current.closed) {
+        if (gristLoginPopupRef.current && !gristLoginPopupRef.current.closed) {
+            // 彈窗仍然開啟
+            popupOpenLogCounter++;
+            if (popupOpenLogCounter % 2 === 0) { // 定時器每秒觸發，所以計數器逢2的倍數時即為每2秒
+                console.log('Grist 登入彈窗目前是開啟狀態 (每2秒檢測一次)');
+            }
+        } else {
+            // 彈窗已關閉或不存在
             clearInterval(checkPopupClosedInterval);
             localStorage.removeItem('gristLoginPopupOpen');
             gristLoginPopupRef.current = null;
@@ -457,11 +466,12 @@ function GristDynamicSelectorViewer() {
                 if (apiKeyManagerRef.current) {
                     apiKeyManagerRef.current.stopRetrying();
                 }
-                // 這裡不應該重置 initialApiKeyAttemptFailed，否則用戶下次點按鈕時重試不會啟動
             }
+            // popupOpenLogCounter 會隨著 openGristLoginPopup 函數作用域結束而自然消失，
+            // 或者在下次 openGristLoginPopup 被調用時重置。
         }
-    }, 1000);
-  }, [apiKey]); // 依賴 apiKey 以便在彈窗關閉時檢查最新狀態
+    }, 1000); // 定時器每 1000ms (1秒) 執行一次
+  }, [apiKey, setStatusMessage, setInitialApiKeyAttemptFailed]);
 
   // 初始加載時，如果 localStorage 和 state 中都沒有 key，則設置 initialApiKeyAttemptFailed
   useEffect(() => {
