@@ -250,84 +250,41 @@ function GristDynamicSelectorViewer() {
 
   // 直接重定向到 Authentik 登入
   const redirectToAuthentikLogin = useCallback(() => {
-    setIsRedirectingToLogin(true);
-    
-    // 保存當前應用狀態
-    const appState = {
-      returnUrl: window.location.href,
-      timestamp: Date.now(),
-      needsApiKeyFetch: true
-    };
-    
-    sessionStorage.setItem('gristAppState', JSON.stringify(appState));
-    
-    // 設置狀態消息
-    setStatusMessage('正在重定向到登入頁面...');
-    
-    // 構建登入 URL（包含回調參數）
-    const currentUrl = window.location.origin + window.location.pathname;
-    const loginUrl = `${GRIST_API_BASE_URL}/login?redirect_uri=${encodeURIComponent(currentUrl)}`;
-    
-    // 延遲一下再重定向，讓用戶看到狀態消息
-    setTimeout(() => {
-      window.location.href = loginUrl;
-    }, 500);
-  }, []);
+  // 使用 Implicit Flow
+  const authParams = new URLSearchParams({
+    response_type: 'token',  // 改為 token 而不是 code
+    client_id: 'your-public-client-id',
+    redirect_uri: window.location.origin + window.location.pathname,
+    scope: 'openid profile email',
+    state: generateRandomString(32)
+  });
+  
+  const loginUrl = `${GRIST_API_BASE_URL}/application/o/authorize/?${authParams.toString()}`;
+  window.location.href = loginUrl;
+}, []);
 
   // 檢查是否從 Authentik 登入回來
   const checkReturnFromLogin = useCallback(async () => {
-    const appStateStr = sessionStorage.getItem('gristAppState');
-    if (!appStateStr) return;
-
-    try {
-      const appState = JSON.parse(appStateStr);
-      const timeDiff = Date.now() - appState.timestamp;
-      
-      // 檢查是否在合理時間內（30分鐘）
-      if (timeDiff > 30 * 60 * 1000) {
-        sessionStorage.removeItem('gristAppState');
-        return;
-      }
-
-      console.log('Detected return from login, attempting to fetch API key...');
-      setStatusMessage('檢測到登入回歸，正在獲取 API Key...');
-      
-      // 清除保存的狀態
-      sessionStorage.removeItem('gristAppState');
-      
-      // 清理 URL 參數
-      const url = new URL(window.location);
-      let hasParams = false;
-      
-      // 移除常見的 OAuth/SAML 參數
-      const paramsToRemove = ['code', 'state', 'session_state', 'iss', 'SAMLResponse', 'RelayState'];
-      paramsToRemove.forEach(param => {
-        if (url.searchParams.has(param)) {
-          url.searchParams.delete(param);
-          hasParams = true;
-        }
-      });
-      
-      if (hasParams) {
-        window.history.replaceState({}, document.title, url.pathname + url.search);
-      }
-      
-      // 嘗試獲取 API Key
-      if (apiKeyManagerRef.current) {
-        const success = await apiKeyManagerRef.current.triggerFetchKeyFromProfile();
-        if (success) {
-          setStatusMessage('登入成功！API Key 已自動獲取。');
-        } else {
-          setStatusMessage('登入可能成功，但無法自動獲取 API Key。請手動輸入或重試。');
-          setShowLoginPrompt(true);
-        }
-      }
-    } catch (error) {
-      console.error('Error processing return from login:', error);
-      sessionStorage.removeItem('gristAppState');
-      setStatusMessage('處理登入回歸時發生錯誤，請手動重試。');
-    }
-  }, []);
+  // 檢查 URL fragment 中的 access_token
+  const hash = window.location.hash.substring(1);
+  const params = new URLSearchParams(hash);
+  const accessToken = params.get('access_token');
+  const error = params.get('error');
+  
+  if (error) {
+    setStatusMessage(`登入失敗: ${error}`);
+    return;
+  }
+  
+  if (accessToken) {
+    // 使用 access_token 直接調用 Grist API
+    // 清理 URL hash
+    window.location.hash = '';
+    
+    // 直接使用這個 token 作為 API Key
+    handleApiKeyUpdate(accessToken, true);
+  }
+}, [handleApiKeyUpdate]);
 
   // 獲取組織 ID
   useEffect(() => {
