@@ -450,7 +450,7 @@ function GristDynamicSelectorViewer() {
     let popupOpenLogCounter = 0; // <--- 新增一個計數器
 
     const checkPopupClosedInterval = setInterval(() => {
-        if (gristLoginPopupRef.current && !gristLoginPopupRef.current.closed) {
+        if (gristLoginPopupRef) {
             // 彈窗仍然開啟
             popupOpenLogCounter++;
             if (popupOpenLogCounter % 2 === 0) { // 定時器每秒觸發，所以計數器逢2的倍數時即為每2秒
