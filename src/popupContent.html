@@ -1,0 +1,65 @@
+<!-- public/popupContent.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>彈出內容頁面</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            background-color: #f0f0f0;
+            text-align: center;
+        }
+        h1 {
+            color: #333;
+        }
+        p {
+            color: #555;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: inline-block;
+        }
+        /* 這個腳本是可選的，只是為了演示子頁面也可以有一些互動 */
+        /* 例如，它可以在關閉前通知父頁面 */
+        /* window.onbeforeunload = function() {
+            if (window.opener && !window.opener.closed) {
+                // 你可以使用 postMessage 與父窗口通信
+                // window.opener.postMessage('popup_closing', '*');
+            }
+            // return "你確定要離開嗎？"; // 如果需要確認
+        }; */
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>這是一個同源彈出頁面</h1>
+        <p>這個頁面的內容來自 <code>popupContent.html</code>。</p>
+        <p>它可以被主頁面開啟和關閉。</p>
+        <p id="messageDisplay"></p>
+    </div>
+    <script>
+        // 接收來自父窗口的訊息 (可選)
+        window.addEventListener('message', function(event) {
+            // 確保訊息來自預期的來源 (你的主應用程式)
+            // if (event.origin !== 'http://localhost:3000') return; // 修改為你的實際來源
+            
+            console.log('Message received in popup:', event.data);
+            const messageDisplay = document.getElementById('messageDisplay');
+            if (messageDisplay && typeof event.data === 'string') {
+                messageDisplay.textContent = '從主頁面收到的訊息: ' + event.data;
+            }
+        });
+
+        // 告知父窗口已載入 (可選)
+        if (window.opener && !window.opener.closed) {
+            window.opener.postMessage({ type: 'popup_loaded' }, window.opener.location.origin);
+        }
+    </script>
+</body>
+</html>
