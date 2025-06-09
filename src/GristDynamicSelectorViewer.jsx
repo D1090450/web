@@ -1,48 +1,18 @@
 // src/GristDynamicSelectorViewer.jsx
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 
+// ... (其他常數和 theme 不變)
 const GRIST_API_BASE_URL = 'https://tiss-grist.fcuai.tw';
-const GRIST_LOGIN_URL = `${GRIST_API_BASE_URL}/login`; // Grist 登入頁面
+const GRIST_LOGIN_URL = `${GRIST_API_BASE_URL}/login`;
 const TARGET_ORG_DOMAIN = 'fcuai.tw';
 const API_KEY_RETRY_INTERVAL = 3000;
 
-// Authentik 配置
 const AUTHENTIK_BASE_URL = 'https://tiss-auth.fcuai.tw/';
 const AUTHENTIK_CLIENT_ID = 'UsuTQscAoU0Pgju33QOHj3XFLjbcdGg5cs2htpfE';
 
-// 特殊 Hash 標記
-const GRIST_SSO_COMPLETE_HASH = '#grist_sso_complete';
+const GRIST_SSO_COMPLETE_HASH_MARKER = 'grist_sso_complete'; // 只用作標記，不帶 #
 
-const theme = {
-  textColor: '#333740',
-  textColorLight: '#555e6d',
-  textColorSubtle: '#777f8d',
-  backgroundColor: '#ffffff',
-  surfaceColor: '#f8f9fa',
-  borderColor: '#dee2e6',
-  primaryColor: '#007bff',
-  primaryColorText: '#ffffff',
-  successColor: '#28a745',
-  successColorBg: '#e9f7ef',
-  errorColor: '#dc3545',
-  errorColorBg: '#fdecea',
-  fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif',
-  fontSizeBase: '16px',
-  fontSizeSmall: '14px',
-  lineHeightBase: '1.6',
-  borderRadius: '4px',
-};
-
-function generateRandomString(length) {
-  let result = '';
-  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  const charactersLength = characters.length;
-  for (let i = 0; i < length; i++) {
-    result += characters.charAt(Math.floor(Math.random() * charactersLength));
-  }
-  return result;
-}
-
+// ... (GristApiKeyManager 和 generateRandomString 不變)
 const GristApiKeyManager = React.forwardRef(({ apiKey: apiKeyProp, onApiKeyUpdate, onStatusUpdate, initialAttemptFailed }, ref) => {
   const [localApiKey, setLocalApiKey] = useState(apiKeyProp || '');
   const [isFetching, setIsFetching] = useState(false);
@@ -81,6 +51,8 @@ const GristApiKeyManager = React.forwardRef(({ apiKey: apiKeyProp, onApiKeyUpdat
       if (!isRetry) {
         onStatusUpdate(`自動獲取 Grist API Key 失敗: ${error.message}.`);
       }
+      // 父組件會處理 setShowManualKeyInput
+      // onApiKeyUpdate('', false); // 不在此處直接調用，避免衝突
       return false;
     } finally {
       setIsFetching(false);
@@ -103,34 +75,40 @@ const GristApiKeyManager = React.forwardRef(({ apiKey: apiKeyProp, onApiKeyUpdat
   }, [apiKeyProp]);
 
   useEffect(() => {
-    if (apiKeyProp) {
+    if (apiKeyProp) { // 如果父組件傳入了 API Key，則 manager 不需動作
         clearTimeout(retryTimerRef.current);
+        if(isFetching) setIsFetching(false); // 如果剛好在 fetching，也停掉
         return;
     }
+    // 只有在父組件指示 initialAttemptFailed (即 triggerManagerInitialFetch 為 true 且父組件的 apiKey 為空)
+    // 且 manager 自身沒有 apiKeyProp 時，才進行獲取
     if (initialAttemptFailed && !apiKeyProp) {
         console.log("GristApiKeyManager: `initialAttemptFailed` is true and no `apiKeyProp`, attempting to fetch Grist key.");
         fetchKeyFromProfile(false).then(success => {
-            if (!success && !apiKeyProp) {
+            if (!success && !apiKeyProp) { // 再次檢查 apiKeyProp，以防異步期間父組件更新
                 if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
                 retryTimerRef.current = setTimeout(function retry() {
                     console.log("GristApiKeyManager: Retrying to fetch Grist API key...");
-                    if (!apiKeyProp) {
+                    if (!apiKeyProp) { // 重試前再次檢查
                         fetchKeyFromProfile(true).then(retrySuccess => {
                             if (!retrySuccess && !apiKeyProp) {
                                 retryTimerRef.current = setTimeout(retry, API_KEY_RETRY_INTERVAL);
                             }
                         });
+                    } else {
+                        clearTimeout(retryTimerRef.current); // 父組件可能已設置 key
                     }
                 }, API_KEY_RETRY_INTERVAL);
             }
         });
     } else {
+        // 如果不滿足初始嘗試條件 (例如父組件已有 key，或未指示嘗試)
         clearTimeout(retryTimerRef.current);
     }
     return () => {
       clearTimeout(retryTimerRef.current);
     };
-  }, [apiKeyProp, initialAttemptFailed, fetchKeyFromProfile]);
+  }, [apiKeyProp, initialAttemptFailed, fetchKeyFromProfile, isFetching]); // isFetching 加入依賴，以便在 apiKeyProp 出現時停止
 
   React.useImperativeHandle(ref, () => ({
     triggerFetchKeyFromProfile: () => {
@@ -144,10 +122,11 @@ const GristApiKeyManager = React.forwardRef(({ apiKey: apiKeyProp, onApiKeyUpdat
     }
   }));
 
+  // ... (GristApiKeyManager JSX 不變)
   return (
-    <div style={{ marginBottom: '20px', padding: '15px', border: `1px dashed ${theme.borderColor}`, borderRadius: theme.borderRadius, backgroundColor: theme.surfaceColor }}>
-      <h4 style={{ marginTop: '0', marginBottom: '10px', color: theme.textColor }}>API Key 管理 (備用)</h4>
-      <p style={{ fontSize: theme.fontSizeSmall, color: theme.textColorSubtle, marginBottom: '15px' }}>
+    <div style={{ marginBottom: '20px', padding: '15px', border: `1px dashed #dee2e6`, borderRadius: '4px', backgroundColor: '#f8f9fa' }}>
+      <h4 style={{ marginTop: '0', marginBottom: '10px', color: '#333740' }}>API Key 管理 (備用)</h4>
+      <p style={{ fontSize: '14px', color: '#777f8d', marginBottom: '15px' }}>
         正常情況下，API Key 會在您通過 Authentik 和 Grist 登入後自動獲取。如果自動獲取失敗，您才需要在此手動輸入。
       </p>
       <input
@@ -155,19 +134,19 @@ const GristApiKeyManager = React.forwardRef(({ apiKey: apiKeyProp, onApiKeyUpdat
         value={localApiKey}
         onChange={(e) => setLocalApiKey(e.target.value)}
         placeholder="在此輸入或貼上 Grist API Key"
-        style={{ width: 'calc(100% - 160px)', marginRight: '10px', padding: '10px', fontSize: theme.fontSizeBase, border: `1px solid ${theme.borderColor}`, borderRadius: theme.borderRadius, boxSizing: 'border-box', color: theme.textColor, }}
+        style={{ width: 'calc(100% - 160px)', marginRight: '10px', padding: '10px', fontSize: '16px', border: `1px solid #dee2e6`, borderRadius: '4px', boxSizing: 'border-box', color: '#333740', }}
       />
-      <button onClick={handleManualSubmit} style={{ padding: '10px 15px', fontSize: theme.fontSizeBase, backgroundColor: '#e9ecef', color: theme.textColor, border: `1px solid ${theme.borderColor}`, borderRadius: theme.borderRadius, cursor: 'pointer', }}>
+      <button onClick={handleManualSubmit} style={{ padding: '10px 15px', fontSize: '16px', backgroundColor: '#e9ecef', color: '#333740', border: `1px solid #dee2e6`, borderRadius: '4px', cursor: 'pointer', }}>
         設定手動 Key
       </button>
     </div>
   );
 });
 
-
 function GristDynamicSelectorViewer() {
   const [apiKey, setApiKey] = useState('');
   const [statusMessage, setStatusMessage] = useState('正在初始化應用程式...');
+  // ... (其他 state 保持不變)
   const [currentOrgId, setCurrentOrgId] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [selectedDocId, setSelectedDocId] = useState('');
@@ -184,12 +163,19 @@ function GristDynamicSelectorViewer() {
   
   const [showManualKeyInput, setShowManualKeyInput] = useState(false);
   const apiKeyManagerRef = useRef(null);
-  const [isRedirecting, setIsRedirecting] = useState(false); // 通用重定向標誌
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const [triggerManagerInitialFetch, setTriggerManagerInitialFetch] = useState(false);
   const [initialAuthCheckComplete, setInitialAuthCheckComplete] = useState(false);
 
+  const cleanUrlHash = useCallback(() => {
+    if (window.location.hash) {
+      console.log("Cleaning URL hash.");
+      window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
+    }
+  }, []);
 
   const handleApiKeyUpdate = useCallback((key, autoFetchedSuccess = false) => {
+    // ... (handleApiKeyUpdate 邏輯不變)
     console.log(`GristDynamicSelectorViewer: handleApiKeyUpdate called with key: ${key ? '******' : '""'}, autoFetchedSuccess: ${autoFetchedSuccess}`);
     setApiKey(key);
     if (key) {
@@ -204,7 +190,7 @@ function GristDynamicSelectorViewer() {
       }
     } else {
       localStorage.removeItem('gristApiKey');
-      setShowManualKeyInput(true); // API Key 獲取失敗或清除，顯示手動輸入
+      setShowManualKeyInput(true); 
       setStatusMessage('Grist API Key 獲取失敗或已清除。請嘗試重新整理頁面以重新登入，或手動提供 API Key。');
     }
     setCurrentOrgId(null);
@@ -219,6 +205,7 @@ function GristDynamicSelectorViewer() {
   }, []);
 
   const makeGristApiRequest = useCallback(async (endpoint, method = 'GET', params = null) => {
+    // ... (makeGristApiRequest 邏輯不變)
     if (!apiKey) {
       throw new Error('API Key 未設定，無法發送請求。');
     }
@@ -246,87 +233,98 @@ function GristDynamicSelectorViewer() {
     }
     if (response.headers.get("content-type")?.includes("application/json")) return response.json();
     return response.text();
-  }, [apiKey, handleApiKeyUpdate]);
+  }, [apiKey, handleApiKeyUpdate]); // setStatusMessage 移到 handleApiKeyUpdate 內部處理
 
   const redirectToAuthentik = useCallback(() => {
-    if (isRedirecting) return;
-    setIsRedirecting(true);
+    setIsRedirecting(true); // 關鍵：先設定狀態
     setStatusMessage('正在重定向到 Authentik 登入頁面...');
     const authParams = new URLSearchParams({
       response_type: 'token', client_id: AUTHENTIK_CLIENT_ID,
-      redirect_uri: window.location.origin + window.location.pathname, // Authentik 成功後返回到當前應用頁面
+      redirect_uri: window.location.origin + window.location.pathname,
       scope: 'openid profile email', state: generateRandomString(32)
     });
     const cleanAuthentikBaseUrl = AUTHENTIK_BASE_URL.endsWith('/') ? AUTHENTIK_BASE_URL : AUTHENTIK_BASE_URL + '/';
     const loginUrl = `${cleanAuthentikBaseUrl}application/o/authorize/?${authParams.toString()}`;
     console.log("Redirecting to Authentik:", loginUrl);
     window.location.href = loginUrl;
-  }, [isRedirecting]);
+  }, [/* 移除 isRedirecting 依賴 */ setIsRedirecting, setStatusMessage]);
 
   const redirectToGristLoginForSSO = useCallback(() => {
-    if (isRedirecting) return;
-    setIsRedirecting(true);
+    setIsRedirecting(true); // 關鍵：先設定狀態
     setStatusMessage('Authentik 成功，正在重定向到 Grist 以完成 SSO 登入...');
-    // Grist 登入成功後，需要跳轉回我們的應用，並帶上一個特殊標記
-    const nextUrlForGrist = window.location.origin + window.location.pathname + GRIST_SSO_COMPLETE_HASH;
+    const nextUrlForGrist = window.location.origin + window.location.pathname + '#' + GRIST_SSO_COMPLETE_HASH_MARKER;
     const gristLoginRedirectUrl = `${GRIST_LOGIN_URL}?next=${encodeURIComponent(nextUrlForGrist)}`;
     console.log("Redirecting to Grist login for SSO:", gristLoginRedirectUrl);
     window.location.href = gristLoginRedirectUrl;
-  }, [isRedirecting]);
+  }, [/* 移除 isRedirecting 依賴 */ setIsRedirecting, setStatusMessage]);
 
   // 初始認證流程
   useEffect(() => {
-    if (initialAuthCheckComplete || isRedirecting) return;
+    if (isRedirecting || initialAuthCheckComplete) {
+      return;
+    }
 
     console.log("GristDynamicSelectorViewer: Performing initial authentication check.");
     const currentHash = window.location.hash;
+    
+    // 提前清理 hash 的一種方式，但更推薦在確定分支後再清理
+    // cleanUrlHash(); // 若在此清理，後續 paramsInHash 會是空的
+
     const paramsInHash = new URLSearchParams(currentHash.substring(1));
     const accessTokenFromUrl = paramsInHash.get('access_token');
     const errorFromUrl = paramsInHash.get('error');
+    const errorDescriptionFromUrl = paramsInHash.get('error_description');
 
-    if (currentHash === GRIST_SSO_COMPLETE_HASH) { // 步驟 3: 從 Grist SSO 返回
+    // 檢查 hash 是否僅為標記 (例如 #grist_sso_complete)
+    const isGristSsoReturn = currentHash.substring(1) === GRIST_SSO_COMPLETE_HASH_MARKER;
+
+    if (isGristSsoReturn) {
       console.log("Returned from Grist SSO. Attempting to fetch Grist API Key.");
-      window.location.hash = ''; // 清理 hash
+      cleanUrlHash(); // 在處理完畢後清理
       setStatusMessage('Grist SSO 完成。正在嘗試獲取 Grist API Key...');
-      setTriggerManagerInitialFetch(true); // 觸發 GristApiKeyManager 獲取 Key
+      setTriggerManagerInitialFetch(true);
       setShowManualKeyInput(false);
-      setInitialAuthCheckComplete(true);
-    } else if (accessTokenFromUrl) { // 步驟 2: 從 Authentik 成功返回
+      setInitialAuthCheckComplete(true); // 流程結束
+    } else if (accessTokenFromUrl) {
       console.log("Returned from Authentik with access token. Redirecting to Grist for SSO.");
-       window.location.hash = ''; // 清理 hash (或者只移除 access_token 等參數)
-      // 不需要儲存 accessTokenFromUrl，因為 Grist 的 SSO 會依賴 Authentik 的 session
-      redirectToGristLoginForSSO();
-      // 此處不設定 initialAuthCheckComplete，因為流程尚未結束
-    } else if (errorFromUrl) { // 從 Authentik 返回時出錯
-      console.error("Authentik login error:", errorFromUrl, paramsInHash.get('error_description'));
-      window.location.hash = ''; // 清理 hash
-      setStatusMessage(`Authentik 登入失敗: ${paramsInHash.get('error_description') || errorFromUrl}. 您可以嘗試手動輸入 API Key 或重新整理以重試。`);
+      cleanUrlHash(); // 在重定向前清理，防止下次錯誤解析
+      // 此處不設定 initialAuthCheckComplete
+      redirectToGristLoginForSSO(); // 內部會設置 isRedirecting = true
+    } else if (errorFromUrl) {
+      console.error("Authentik login error:", errorFromUrl, errorDescriptionFromUrl);
+      cleanUrlHash(); // 清理錯誤信息
+      setStatusMessage(`Authentik 登入失敗: ${errorDescriptionFromUrl || errorFromUrl}. 您可以嘗試手動輸入 API Key 或重新整理以重試。`);
       setShowManualKeyInput(true);
       setTriggerManagerInitialFetch(false);
-      setInitialAuthCheckComplete(true); // 認證流程（雖然失敗）已告一段落
-    } else { // 步驟 1: 初始加載，或 localStorage 有 key
+      setInitialAuthCheckComplete(true); // 認證流程（失敗）結束
+    } else {
       const storedApiKey = localStorage.getItem('gristApiKey');
       if (storedApiKey) {
         console.log("Found API key in localStorage. Using it.");
+        // cleanUrlHash(); // 如果 hash 為空或不相關，則無需清理
         handleApiKeyUpdate(storedApiKey, false);
         setTriggerManagerInitialFetch(false);
         setShowManualKeyInput(false);
-        setInitialAuthCheckComplete(true);
+        setInitialAuthCheckComplete(true); // 流程結束
       } else {
         console.log("No API key in localStorage, not returning from Authentik or Grist. Redirecting to Authentik.");
-        redirectToAuthentik();
-        // 此處不設定 initialAuthCheckComplete，因為流程尚未結束
+        // cleanUrlHash(); // 同上
+        // 此處不設定 initialAuthCheckComplete
+        redirectToAuthentik(); // 內部會設置 isRedirecting = true
       }
     }
-  }, [initialAuthCheckComplete, isRedirecting, redirectToAuthentik, redirectToGristLoginForSSO, handleApiKeyUpdate]);
-
-  // --- 後續的 useEffects (獲取組織、文檔、表格等) 保持不變，但它們的執行會依賴 apiKey 和 initialAuthCheckComplete ---
+  }, [initialAuthCheckComplete, isRedirecting, redirectToAuthentik, redirectToGristLoginForSSO, handleApiKeyUpdate, cleanUrlHash, /* 移除 setStatusMessage, setIsRedirecting */]);
+  
+  // ... (後續獲取組織、文檔、表格的 useEffects 和 JSX 保持不變) ...
+  // 確保它們的依賴中包含 initialAuthCheckComplete
+  
+  // 獲取組織 ID
   useEffect(() => {
-    if (!apiKey || !initialAuthCheckComplete) {
+    if (!apiKey || !initialAuthCheckComplete || isRedirecting) { // 添加 isRedirecting 判斷
       setCurrentOrgId(null); setDocuments([]); return;
     }
-    // ... (獲取組織 ID 的邏輯)
-        console.log("useEffect (getOrgId): API Key present, attempting to fetch org ID.");
+    console.log("useEffect (getOrgId): API Key present, attempting to fetch org ID.");
+    // ... (getOrgId 內部邏輯不變)
     const getOrgId = async () => {
       setIsLoadingDocs(true); 
       setStatusMessage('API Key 有效，正在獲取組織資訊...');
@@ -361,14 +359,15 @@ function GristDynamicSelectorViewer() {
       }
     };
     getOrgId();
-  }, [apiKey, makeGristApiRequest, initialAuthCheckComplete]); 
+  }, [apiKey, makeGristApiRequest, initialAuthCheckComplete, isRedirecting, setIsLoadingDocs, setStatusMessage, setCurrentOrgId, setDocuments]); // 補全依賴
 
+  // 獲取文檔列表
   useEffect(() => {
-    if (!currentOrgId || !apiKey || !initialAuthCheckComplete) { 
+    if (!currentOrgId || !apiKey || !initialAuthCheckComplete || isRedirecting) { 
       setDocuments([]); return;
     }
-    // ... (獲取文檔列表的邏輯)
-        console.log("useEffect (fetchDocs): currentOrgId present, attempting to fetch documents for org:", currentOrgId);
+    console.log("useEffect (fetchDocs): currentOrgId present, attempting to fetch documents for org:", currentOrgId);
+    // ... (fetchDocsFromWorkspaces 內部邏輯不變)
     const fetchDocsFromWorkspaces = async () => {
       setIsLoadingDocs(true); 
       setStatusMessage(`正在從組織 ID ${currentOrgId} 獲取文檔列表...`);
@@ -409,14 +408,15 @@ function GristDynamicSelectorViewer() {
       }
     };
     fetchDocsFromWorkspaces();
-  }, [currentOrgId, apiKey, makeGristApiRequest, initialAuthCheckComplete]);
+  }, [currentOrgId, apiKey, makeGristApiRequest, initialAuthCheckComplete, isRedirecting, setIsLoadingDocs, setStatusMessage, setDocuments]); // 補全依賴
 
+  // 獲取表格列表
   useEffect(() => {
-    if (!selectedDocId || !apiKey || !initialAuthCheckComplete) { 
+    if (!selectedDocId || !apiKey || !initialAuthCheckComplete || isRedirecting) { 
       setTables([]); setSelectedTableId(''); return;
     }
-    // ... (獲取表格列表的邏輯)
-        console.log("useEffect (fetchTables): selectedDocId present, attempting to fetch tables for doc:", selectedDocId);
+    console.log("useEffect (fetchTables): selectedDocId present, attempting to fetch tables for doc:", selectedDocId);
+    // ... (fetchTables 內部邏輯不變)
     const fetchTables = async () => {
       setIsLoadingTables(true);
       const docName = documents.find(d=>d.id === selectedDocId)?.displayName || selectedDocId;
@@ -437,10 +437,10 @@ function GristDynamicSelectorViewer() {
       } finally { setIsLoadingTables(false); }
     };
     fetchTables();
-  }, [selectedDocId, apiKey, makeGristApiRequest, initialAuthCheckComplete, documents]);
+  }, [selectedDocId, apiKey, makeGristApiRequest, initialAuthCheckComplete, documents, isRedirecting, setIsLoadingTables, setStatusMessage, setTables, setSelectedTableId, setDataError]); // 補全依賴
 
+  // ... (handleFetchTableData 和 JSX 保持不變)
   const handleFetchTableData = useCallback(async () => {
-    // ... (獲取表格數據的邏輯，無需大改)
     if (!apiKey || !selectedDocId || !selectedTableId) {
       setDataError('請先設定 API Key 並選擇文檔和表格。');
       return;
@@ -470,7 +470,8 @@ function GristDynamicSelectorViewer() {
       setStatusMessage(`獲取數據失敗: ${error.message}`);
       setTableData([]); 
     } finally { setIsLoadingData(false); }
-  }, [apiKey, selectedDocId, selectedTableId, makeGristApiRequest, filterQuery, sortQuery]);
+  }, [apiKey, selectedDocId, selectedTableId, makeGristApiRequest, filterQuery, sortQuery, setIsLoadingData, setDataError, setTableData, setColumns, setStatusMessage]);
+
 
   return (
     <div style={{ padding: '25px', fontFamily: theme.fontFamily, fontSize: theme.fontSizeBase, lineHeight: theme.lineHeightBase, color: theme.textColor, backgroundColor: theme.backgroundColor, maxWidth: '1000px', margin: '20px auto', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', borderRadius: '8px', }}>
@@ -497,7 +498,6 @@ function GristDynamicSelectorViewer() {
         </p> 
       )}
       
-      {/* GristApiKeyManager 僅在 showManualKeyInput 為 true 時，或在 triggerManagerInitialFetch 為 true 且沒有 apiKey 時被指示嘗試獲取 */}
       {(showManualKeyInput || (triggerManagerInitialFetch && !apiKey)) && (
         <GristApiKeyManager
             ref={apiKeyManagerRef}
@@ -508,12 +508,8 @@ function GristDynamicSelectorViewer() {
         />
       )}
       
-      {/* Authentik 登入按鈕不再直接顯示，因為流程是自動的。除非認證徹底失敗，才考慮顯示一個重試按鈕。 */}
-      {/* 現在，如果沒有 API Key 且認證流程卡住或失敗，會顯示手動輸入區域。重新整理頁面會重啟認證流程。 */}
-
-      {apiKey && initialAuthCheckComplete && (
+      {apiKey && initialAuthCheckComplete && !isRedirecting && ( // 確保不在重定向前渲染主要內容
         <div style={{ marginTop: '25px', padding: '20px', border: `1px solid ${theme.borderColor}`, borderRadius: theme.borderRadius, backgroundColor: theme.surfaceColor, }}>
-          {/* ... (選擇文檔、表格、數據獲取選項的 UI 保持不變) ... */}
           <h3 style={{ marginTop: '0', marginBottom: '20px', color: theme.textColor, borderBottom: `1px solid ${theme.borderColor}`, paddingBottom: '10px' }}>選擇數據源</h3>
           <div style={{ marginBottom: '15px' }}>
             <label htmlFor="docSelect" style={{ display: 'block', marginBottom: '8px', color: theme.textColorLight, fontSize: theme.fontSizeSmall, fontWeight: '500' }}>選擇文檔:</label>
@@ -564,9 +560,8 @@ function GristDynamicSelectorViewer() {
         </div>
       )}
 
-      {apiKey && initialAuthCheckComplete && tableData && tableData.length > 0 && columns.length > 0 && (
+      {apiKey && initialAuthCheckComplete && !isRedirecting && tableData && tableData.length > 0 && columns.length > 0 && (
         <div style={{ marginTop: '30px', overflowX: 'auto' }}>
-          {/* ... (數據結果表格的 UI 保持不變) ... */}
           <h3 style={{ marginBottom: '15px', color: theme.textColor }}>數據結果: (前 {Math.min(tableData.length, 50)} 條)</h3>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px', fontSize: theme.fontSizeSmall, boxShadow: '0 2px 4px rgba(0,0,0,0.05)', borderRadius: theme.borderRadius, overflow: 'hidden', }}>
             <thead>
@@ -592,7 +587,7 @@ function GristDynamicSelectorViewer() {
           </table>
         </div>
       )}
-      {apiKey && initialAuthCheckComplete && selectedDocId && selectedTableId && tableData && tableData.length === 0 && !isLoadingData && !dataError && (
+      {apiKey && initialAuthCheckComplete && !isRedirecting && selectedDocId && selectedTableId && tableData && tableData.length === 0 && !isLoadingData && !dataError && (
         <p style={{ marginTop: '15px', padding: '12px 15px', backgroundColor: '#fff3cd', border: '1px solid #ffeeba', color: '#856404', borderRadius: theme.borderRadius, fontSize: theme.fontSizeSmall, textAlign: 'center', }}>
             {filterQuery || sortQuery ? '沒有符合目前過濾/排序條件的數據，或表格本身為空。' : '該表格目前沒有數據。'}
         </p>
