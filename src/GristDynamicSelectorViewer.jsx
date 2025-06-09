@@ -1,130 +1,64 @@
-// ModalPage.jsx
-import React, { useState } from 'react';
+// OpenGooglePage.jsx
+import React from 'react';
 
-function ModalPage() {
-  // 狀態來控制彈出視窗的顯示與否
-  const [isPanelOpen, setIsPanelOpen] = useState(false); // 改名為 isPanelOpen 更貼切
-
-  // 開啟面板的函式
-  const openPanel = () => {
-    setIsPanelOpen(true);
+function OpenGooglePage() {
+  // 開啟 Google 首頁在新分頁的函式
+  const openGoogleInNewTab = () => {
+    // window.open(URL, target, features)
+    // URL: 要載入的網址
+    // target: '_blank' 會在新視窗或新分頁開啟 (取決於瀏覽器設定)
+    // features: 'noopener,noreferrer' 是安全性的最佳實踐，
+    //           noopener 防止新頁面透過 window.opener 存取原始頁面，
+    //           noreferrer 防止新頁面知道來源頁面。
+    window.open('https://www.google.com', '_blank', 'noopener,noreferrer');
   };
 
-  // 關閉面板的函式
-  const closePanel = () => {
-    setIsPanelOpen(false);
-  };
-
-  // 浮動面板的樣式
-  // 注意：這裡不再有 modalOverlayStyle
-  const panelStyle = {
-    position: 'fixed', // 固定定位，相對於瀏覽器視窗
-    top: '20px',       // 距離頂部 20px
-    right: '20px',     // 距離右側 20px (可以調整位置)
-    // 或者使用 top: '50%', left: '50%', transform: 'translate(-50%, -50%)' 來居中
-    backgroundColor: '#f8f9fa', // 淺色背景
-    padding: '20px 25px',
-    borderRadius: '8px',
-    boxShadow: '0 5px 15px rgba(0, 0, 0, 0.15)', // 更柔和的陰影
-    minWidth: '250px',
-    maxWidth: '400px',
-    zIndex: 1000, // 確保在主內容之上
-    border: '1px solid #dee2e6', // 可選的邊框
-    // 如果內容可能超出，可以添加：
-    // maxHeight: '80vh',
-    // overflowY: 'auto',
-  };
-
-  // 按鈕的基礎樣式
+  // 按鈕樣式 (可以依照你的喜好調整)
   const buttonStyle = {
-    padding: '10px 20px',
-    margin: '10px 5px',
+    padding: '12px 25px',
+    margin: '20px 5px',
     border: 'none',
-    borderRadius: '5px',
+    borderRadius: '6px',
     cursor: 'pointer',
-    fontSize: '16px',
-    transition: 'background-color 0.2s ease, opacity 0.2s ease',
-  };
-
-  // 開啟按鈕樣式
-  const primaryButtonStyle = {
-    ...buttonStyle,
-    backgroundColor: '#007bff',
+    fontSize: '17px',
+    backgroundColor: '#4285F4', // Google 的藍色
     color: 'white',
+    fontWeight: 'bold',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+    transition: 'background-color 0.2s ease, box-shadow 0.2s ease',
   };
 
-  // 關閉按鈕樣式
-  const secondaryButtonStyle = {
-    ...buttonStyle,
-    backgroundColor: '#6c757d',
-    color: 'white',
+  const buttonHoverStyle = { // 只是範例，實際 hover 效果建議用 CSS :hover
+    backgroundColor: '#357ae8',
+    boxShadow: '0 4px 8px rgba(0,0,0,0.15)',
   };
 
-  // 按鈕禁用時的樣式
-  const disabledButtonStyle = {
-    ...buttonStyle,
-    backgroundColor: '#e9ecef',
-    color: '#6c757d',
-    cursor: 'not-allowed',
-    opacity: 0.7,
-  };
 
-  // 主頁面內容的樣式，用於演示互動性
-  const mainContentStyle = {
-    padding: '20px',
-    border: '1px dashed #ccc',
-    marginTop: '20px',
-    height: '300px', // 給一些高度，方便看到面板浮動效果
-    backgroundColor: '#e9ecef',
-  };
+  // 為了示範 hover 效果，我們可以使用 onMouseEnter 和 onMouseLeave
+  // 但在實際專案中，CSS 的 :hover 偽類是更好的選擇
+  const [isHovered, setIsHovered] = React.useState(false);
 
   return (
-    <div>
+    <div style={{ textAlign: 'center', paddingTop: '50px' }}>
       <h1>我的網頁</h1>
-      <p>點擊按鈕來開啟或關閉一個非模態的浮動面板。</p>
-      <p>當面板開啟時，您仍然可以與主頁面的其他部分互動。</p>
+      <p>點擊下方按鈕以在新分頁中開啟 Google 搜尋引擎。</p>
 
-      {/* 開啟浮動面板的按鈕 */}
       <button
-        style={isPanelOpen ? disabledButtonStyle : primaryButtonStyle}
-        onClick={openPanel}
-        disabled={isPanelOpen}
+        style={isHovered ? {...buttonStyle, ...buttonHoverStyle} : buttonStyle}
+        onClick={openGoogleInNewTab}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
       >
-        開啟面板
+        開啟 Google
       </button>
 
-      {/* 關閉浮動面板的按鈕 */}
-      <button
-        style={!isPanelOpen ? disabledButtonStyle : secondaryButtonStyle}
-        onClick={closePanel}
-        disabled={!isPanelOpen}
-      >
-        關閉面板
-      </button>
-
-      {/* 這裡是主頁面的其他可互動內容 */}
-      <div style={mainContentStyle}>
-        <h2>主頁面內容區域</h2>
-        <p>您可以點擊這裡的文字或下方的按鈕，即使面板已開啟。</p>
-        <button style={buttonStyle} onClick={() => alert('主頁面按鈕被點擊！')}>
-          主頁面測試按鈕
-        </button>
-      </div>
-
-      {/* 浮動面板組件 (只有 isPanelOpen 為 true 時才渲染) */}
-      {isPanelOpen && (
-        <div style={panelStyle}>
-          <h3>浮動面板</h3>
-          <p>這是浮動面板的內容。</p>
-          <p>您可以將此面板拖曳或調整大小（如果實現了相關邏輯）。</p>
-          <button style={secondaryButtonStyle} onClick={closePanel}>
-            從面板內部關閉
-          </button>
-          {/* 注意：這個面板內部也可以有自己的關閉按鈕，或者完全依賴主頁面的按鈕 */}
-        </div>
-      )}
+      {/*
+        由於我們是開啟一個新的瀏覽器分頁，
+        所以 "關閉彈出視窗" 的按鈕在這裡沒有意義。
+        使用者會直接在瀏覽器層級關閉新開啟的 Google 分頁。
+      */}
     </div>
   );
 }
 
-export default ModalPage;
+export default OpenGooglePage;
