@@ -253,7 +253,7 @@ function GristDynamicSelectorViewer() {
   // 使用 Implicit Flow
   const authParams = new URLSearchParams({
     response_type: 'token',  // 改為 token 而不是 code
-    client_id: 'your-public-client-id',
+    client_id: 'UsuTQscAoU0Pgju33QOHj3XFLjbcdGg5cs2htpfE',
     redirect_uri: window.location.origin + window.location.pathname,
     scope: 'openid profile email',
     state: generateRandomString(32)
