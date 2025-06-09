@@ -17,7 +17,7 @@ function SameOriginPopupPage() {
     // '/popupContent.html' 是相對於 public 資料夾的路徑
     // 瀏覽器可能會根據設定在新分頁或新視窗中開啟
     const newWindow = window.open(
-      '/popupContent.html',
+      '/my-app-a/popupContent.html',
       'myPopupWindow', // 給視窗一個名稱，可以避免重複開啟相同名稱的視窗
       'width=600,height=400,resizable=yes,scrollbars=yes' // 可選的視窗特性
     );
