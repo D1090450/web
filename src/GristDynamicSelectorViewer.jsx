@@ -442,7 +442,7 @@ function GristDynamicSelectorViewer() {
       return;
     }
     const loginUrl = `${GRIST_API_BASE_URL}/login`;
-    gristLoginPopupRef.current = window.open(loginUrl, 'GristLoginPopup', 'width=600,height=700,scrollbars=yes,resizable=yes,noopener,noreferrer');
+    gristLoginPopupRef.current = window.open(loginUrl, 'GristLoginPopup', 'width=600,height=700,scrollbars=yes,resizable=yes,noreferrer');
     localStorage.setItem('gristLoginPopupOpen', 'true'); 
     setStatusMessage('請在新視窗中完成 Grist 登入。本頁面將嘗試自動檢測登入狀態。');
     setInitialApiKeyAttemptFailed(true); 
