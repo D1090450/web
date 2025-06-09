@@ -65,11 +65,24 @@ function ModalPage() {
   return (
     <div>
       <h1>我的網頁</h1>
-      <p>點擊下方按鈕來開啟彈出視窗。</p>
+      <p>使用下方的按鈕來控制彈出視窗的開啟與關閉。</p>
 
       {/* 開啟彈出視窗的按鈕 */}
-      <button style={primaryButtonStyle} onClick={openModal}>
+      <button
+        style={isModalOpen ? disabledButtonStyle : primaryButtonStyle}
+        onClick={openModal}
+        disabled={isModalOpen} // 當彈出視窗開啟時，禁用此按鈕
+      >
         開啟彈出視窗
+      </button>
+
+      {/* 關閉彈出視窗的按鈕 */}
+      <button
+        style={!isModalOpen ? disabledButtonStyle : secondaryButtonStyle}
+        onClick={closeModal}
+        disabled={!isModalOpen} // 當彈出視窗關閉時，禁用此按鈕
+      >
+        關閉彈出視窗
       </button>
 
       {/* 彈出視窗組件 (只有 isModalOpen 為 true 時才渲染) */}
@@ -79,11 +92,7 @@ function ModalPage() {
             <h2>這是一個彈出視窗</h2>
             <p>這裡是彈出視窗的內容。</p>
             <p>你可以加入表單、訊息或任何其他內容。</p>
-            
-            {/* 關閉彈出視窗的按鈕 */}
-            <button style={secondaryButtonStyle} onClick={closeModal}>
-              關閉視窗
-            </button>
+            {/* 注意：彈出視窗內部不再有自己的關閉按鈕 */}
           </div>
         </div>
       )}
