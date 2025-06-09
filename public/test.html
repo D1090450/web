@@ -8,7 +8,7 @@
             const loginUrl = 'https://tiss-auth.fcuai.tw/'; // 你的 Grist URL
             console.log('Button clicked, attempting to open popup...');
             try {
-                const newWin = window.open(loginUrl, 'TestPopup', 'width=600,height=400');
+                const newWin = window.open(loginUrl, 'TestPopup', 'width=600,height=400,noopener,noreferrer');
                 
                 if (newWin && !newWin.closed) { // 增加 !newWin.closed 檢查更保險
                     console.log('Popup opened successfully, reference obtained:', newWin);
