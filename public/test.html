@@ -5,7 +5,7 @@
     <button id="openBtn">Open Grist Login</button>
     <script>
         document.getElementById('openBtn').addEventListener('click', function() {
-            const loginUrl = 'https://tiss-grist.fcuai.tw/login'; // 你的 Grist URL
+            const loginUrl = 'https://tiss-auth.fcuai.tw/if/flow/default-authentication-flow'; // 你的 Grist URL
             console.log('Button clicked, attempting to open popup...');
             try {
                 const newWin = window.open(loginUrl, 'TestPopup', 'width=600,height=400,noopener,noreferrer');
