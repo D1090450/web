@@ -1,32 +1,53 @@
 <!DOCTYPE html>
 <html>
-<head><title>Popup Test</title></head>
+<head>
+    <title>Popup Test for Grist Login</title>
+</head>
 <body>
     <button id="openBtn">Open Grist Login</button>
+    <p id="status"></p>
+
     <script>
         document.getElementById('openBtn').addEventListener('click', function() {
-            const loginUrl = 'https://tiss-auth.fcuai.tw/'; // 你的 Grist URL
-            console.log('Button clicked, attempting to open popup...');
+            const loginUrl = 'https://tiss-auth.fcuai.tw/'; // Grist login URL that redirects to Authentik
+            const statusElement = document.getElementById('status');
+            statusElement.textContent = '嘗試開啟 Grist 登入視窗...';
+            console.log('Button clicked, attempting to open Grist login popup...');
+
             try {
-                const newWin = window.open(loginUrl, 'TestPopup', 'width=600,height=400,noopener,noreferrer');
-                
-                if (newWin && !newWin.closed) { // 增加 !newWin.closed 檢查更保險
-                    console.log('Popup opened successfully, reference obtained:', newWin);
-                    alert('SUCCESS: Got window reference!');
-                    // 你可以在這裡嘗試 newWin.focus()
-                    // let checkClosedInterval = setInterval(() => {
-                    //     if (newWin.closed) {
-                    //         console.log('Popup was closed.');
-                    //         clearInterval(checkClosedInterval);
-                    //     }
-                    // }, 500);
+                const newWin = window.open(loginUrl, 'GristLoginPopup', 'width=700,height=650,noopener,noreferrer');
+
+                if (newWin === null) {
+                    // 這是預期情況，因為目標 URL 複雜且跨域，彈出視窗本身應該已打開
+                    console.warn('window.open returned null. This is often expected for cross-origin authentication popups that redirect.');
+                    statusElement.textContent = 'Grist 登入視窗已嘗試開啟。請在該視窗完成登入。成功登入後，該視窗應會自動關閉。';
+                    alert('Grist 登入視窗已嘗試開啟。\n請在該視窗完成登入。\n成功登入後，該視窗應會自動關閉。\n\n(如果視窗未出現，請檢查瀏覽器的彈出視窗攔截設定，並允許來自此網站的彈出視窗。)');
+                    // 由於 newWin 為 null，無法監控 newWin.closed
+                    // 主頁面此時只能依賴 Grist/Authentik 流程自行關閉彈出視窗
+                } else if (newWin.closed || typeof newWin.closed === 'undefined') {
+                    // 這種情況更像是彈出視窗被瀏覽器完全攔截且未顯示
+                    console.error('Failed to open popup: window.open returned a closed or invalid reference, or the popup was blocked immediately.');
+                    statusElement.textContent = '錯誤：無法開啟 Grist 登入視窗。請檢查您的瀏覽器彈出視窗攔截器設定。';
+                    alert('FAILURE: 無法開啟 Grist 登入視窗。請檢查您的瀏覽器彈出視窗攔截器設定。');
                 } else {
-                    console.error('Failed to open popup or get a valid reference. newWin:', newWin, 'Is newWin.closed?', (newWin ? newWin.closed : 'N/A'));
-                    alert('FAILURE: window.open returned ' + (newWin === null ? 'null' : 'a closed window reference') + '. Check browser popup blocker settings and console.');
+                    // 理論上根據你的描述，不太可能進入此分支
+                    console.log('Grist login popup opened successfully and a reference was obtained (this was unexpected for this URL). Monitoring for closure...');
+                    statusElement.textContent = 'Grist 登入視窗已開啟。請完成登入。正在監控視窗關閉...';
+                    // 如果意外地獲取了有效的 newWin 引用，可以輪詢檢查其 .closed 狀態
+                    const checkClosedInterval = setInterval(() => {
+                        if (newWin.closed) {
+                            clearInterval(checkClosedInterval);
+                            console.log('Grist login popup has been closed.');
+                            statusElement.textContent = 'Grist 登入視窗已關閉。您可以嘗試檢查 Grist 的登入狀態。';
+                            alert('Grist 登入視窗已關閉。');
+                            // 在這裡，你可以觸發一個函數來檢查 Grist 的實際登入狀態 (例如，通過調用 Grist API)
+                        }
+                    }, 1000);
                 }
             } catch (e) {
                 console.error('Error during window.open attempt:', e);
-                alert('ERROR: An exception occurred during window.open: ' + e.message);
+                statusElement.textContent = '錯誤：開啟登入視窗時發生例外狀況: ' + e.message;
+                alert('ERROR: 開啟登入視窗時發生例外狀況: ' + e.message);
             }
         });
     </script>
