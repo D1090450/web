@@ -311,45 +311,30 @@ function GristDynamicSelectorViewer() {
     const accessTokenFromUrl = params.get('access_token');
     const errorFromUrl = params.get('error');
 
-    if (accessTokenFromUrl || errorFromUrl) {
-      // 情况1: 从 Authentik 重定向回来
-      console.log("Detected return from Authentik redirect");
-      window.location.hash = ''; // 清理 hash
+    if (accessTokenFromUrl) {
+      console.log("Successfully returned from Authentik with a token. Will attempt to fetch Grist API Key.");
+      setStatusMessage('Authentik 登入成功。正在嘗試從 Grist 個人資料獲取 API Key...');
+      setAuthState('checking_grist');
       
-      if (errorFromUrl) {
-        console.error("Authentik login error:", errorFromUrl, params.get('error_description'));
-        setStatusMessage(`Authentik 登入失敗: ${params.get('error_description') || errorFromUrl}. 您可以嘗試手動輸入 API Key 或重新登入。`);
-        setShowLoginPromptAndManualKey(true);
-        setTriggerManagerInitialFetch(false);
-        setAuthState('need_login');
-        setInitialAuthCheckComplete(true);
-      } else if (accessTokenFromUrl) {
-        console.log("Successfully returned from Authentik with a token. Will attempt to fetch Grist API Key.");
-        setStatusMessage('Authentik 登入成功。正在嘗試從 Grist 個人資料獲取 API Key...');
-        setAuthState('checking_grist');
-        setTriggerManagerInitialFetch(true);
-        setShowLoginPromptAndManualKey(false);
-        setInitialAuthCheckComplete(true);
-      }
-    } else {
-      // 情况2: 非从 Authentik 重定向回来
-      const storedApiKey = localStorage.getItem('gristApiKey');
-      if (storedApiKey) {
-        console.log("Found API key in localStorage.");
-        setAuthState('authenticated');
-        handleApiKeyUpdate(storedApiKey, false);
-        setTriggerManagerInitialFetch(false);
-        setShowLoginPromptAndManualKey(false);
-        setInitialAuthCheckComplete(true);
-      } else {
-        // 没有 localStorage key -> 需要认证
-        console.log("No API key in localStorage. Need authentication.");
-        setAuthState('need_login');
-        setShowLoginPromptAndManualKey(true);
-        setStatusMessage('請登入 Authentik 以獲取 API Key，或手動輸入 Grist API Key。');
-        setInitialAuthCheckComplete(true);
-        // 不自动重定向，让用户选择
-      }
+      // 先尝试获取 Grist API Key
+      setTriggerManagerInitialFetch(true);
+      setShowLoginPromptAndManualKey(false);
+      setInitialAuthCheckComplete(true);
+      
+      // 如果获取失败，自动重定向到 Grist 登录
+      setTimeout(async () => {
+        try {
+          const success = await apiKeyManagerRef.current?.triggerFetchKeyFromProfile();
+          if (!success) {
+            setStatusMessage('需要先登入 Grist。正在重定向到 Grist 登入頁面...');
+            window.open(`${GRIST_API_BASE_URL}/login`, '_blank');
+            setStatusMessage('請在新頁面完成 Grist 登入後，返回此頁面重新嘗試。');
+          }
+        } catch (error) {
+          setStatusMessage('需要先登入 Grist。正在重定向到 Grist 登入頁面...');
+          window.open(`${GRIST_API_BASE_URL}/login`, '_blank');
+        }
+      }, 1000);
     }
   }, [initialAuthCheckComplete, isRedirectingToLogin, authState, handleApiKeyUpdate]);
 
@@ -567,7 +552,20 @@ function GristDynamicSelectorViewer() {
           >
             {isRedirectingToLogin ? '正在重定向...' : '前往 Authentik 登入'}
           </button>
-          {/* 如果 GristApiKeyManager 可見（通常與 showLoginPromptAndManualKey 一致），可以提供一個按鈕手動觸發其獲取邏輯 */}
+          <button 
+            onClick={handleGristLoginRedirect}
+            style={{ 
+              padding: '10px 15px', 
+              backgroundColor: '#28a745', 
+              color: theme.primaryColorText, 
+              border: 'none', 
+              borderRadius: theme.borderRadius, 
+              cursor: 'pointer',
+              marginLeft: '10px'
+            }}
+          >
+            前往 Grist 登入
+          </button>
           {apiKeyManagerRef.current && (
             <button 
                 onClick={() => apiKeyManagerRef.current?.triggerFetchKeyFromProfile()}
