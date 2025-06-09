@@ -3,41 +3,36 @@ import React, { useState } from 'react';
 
 function ModalPage() {
   // 狀態來控制彈出視窗的顯示與否
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPanelOpen, setIsPanelOpen] = useState(false); // 改名為 isPanelOpen 更貼切
 
-  // 開啟彈出視窗的函式
-  const openModal = () => {
-    setIsModalOpen(true);
+  // 開啟面板的函式
+  const openPanel = () => {
+    setIsPanelOpen(true);
   };
 
-  // 關閉彈出視窗的函式
-  const closeModal = () => {
-    setIsModalOpen(false);
+  // 關閉面板的函式
+  const closePanel = () => {
+    setIsPanelOpen(false);
   };
 
-  // 彈出視窗的樣式
-  const modalOverlayStyle = {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)', // 仍然保留背景遮罩以區分層次
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1000,
-  };
-
-  const modalContentStyle = {
-    backgroundColor: '#fff',
-    padding: '25px 30px',
+  // 浮動面板的樣式
+  // 注意：這裡不再有 modalOverlayStyle
+  const panelStyle = {
+    position: 'fixed', // 固定定位，相對於瀏覽器視窗
+    top: '20px',       // 距離頂部 20px
+    right: '20px',     // 距離右側 20px (可以調整位置)
+    // 或者使用 top: '50%', left: '50%', transform: 'translate(-50%, -50%)' 來居中
+    backgroundColor: '#f8f9fa', // 淺色背景
+    padding: '20px 25px',
     borderRadius: '8px',
-    boxShadow: '0 4px 15px rgba(0, 0, 0, 0.2)',
-    minWidth: '300px',
-    maxWidth: '90%',
-    textAlign: 'center',
-    // 如果需要，可以給彈出視窗本身添加 overflow: 'auto' 以便內容過多時滾動
+    boxShadow: '0 5px 15px rgba(0, 0, 0, 0.15)', // 更柔和的陰影
+    minWidth: '250px',
+    maxWidth: '400px',
+    zIndex: 1000, // 確保在主內容之上
+    border: '1px solid #dee2e6', // 可選的邊框
+    // 如果內容可能超出，可以添加：
+    // maxHeight: '80vh',
+    // overflowY: 'auto',
   };
 
   // 按鈕的基礎樣式
@@ -74,44 +69,58 @@ function ModalPage() {
     opacity: 0.7,
   };
 
+  // 主頁面內容的樣式，用於演示互動性
+  const mainContentStyle = {
+    padding: '20px',
+    border: '1px dashed #ccc',
+    marginTop: '20px',
+    height: '300px', // 給一些高度，方便看到面板浮動效果
+    backgroundColor: '#e9ecef',
+  };
+
   return (
     <div>
       <h1>我的網頁</h1>
-      <p>使用下方的按鈕來控制彈出視窗的開啟與關閉。</p>
-      <p>這個彈出視窗不會因為點擊背景而關閉。</p>
+      <p>點擊按鈕來開啟或關閉一個非模態的浮動面板。</p>
+      <p>當面板開啟時，您仍然可以與主頁面的其他部分互動。</p>
 
-      {/* 開啟彈出視窗的按鈕 */}
+      {/* 開啟浮動面板的按鈕 */}
       <button
-        style={isModalOpen ? disabledButtonStyle : primaryButtonStyle}
-        onClick={openModal}
-        disabled={isModalOpen} // 當彈出視窗開啟時，禁用此按鈕
+        style={isPanelOpen ? disabledButtonStyle : primaryButtonStyle}
+        onClick={openPanel}
+        disabled={isPanelOpen}
       >
-        開啟彈出視窗
+        開啟面板
       </button>
 
-      {/* 關閉彈出視窗的按鈕 */}
+      {/* 關閉浮動面板的按鈕 */}
       <button
-        style={!isModalOpen ? disabledButtonStyle : secondaryButtonStyle}
-        onClick={closeModal}
-        disabled={!isModalOpen} // 當彈出視窗關閉時，禁用此按鈕
+        style={!isPanelOpen ? disabledButtonStyle : secondaryButtonStyle}
+        onClick={closePanel}
+        disabled={!isPanelOpen}
       >
-        關閉彈出視窗
+        關閉面板
       </button>
 
-      {/* 彈出視窗組件 (只有 isModalOpen 為 true 時才渲染) */}
-      {isModalOpen && (
-        // *** 主要修改點：移除了 modalOverlayStyle div 上的 onClick 事件 ***
-        <div style={modalOverlayStyle}>
-          {/* 
-            之前 modalContentStyle div 上的 onClick={(e) => e.stopPropagation()} 
-            在這種情況下不再嚴格必要，因為父元素不再有關閉事件。
-            但保留它也無害，如果未來 overlay 又添加了其他交互，它依然能防止事件冒泡。
-          */}
-          <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
-            <h2>這是一個彈出視窗</h2>
-            <p>這裡是彈出視窗的內容。</p>
-            <p>這個視窗只能透過主頁面上的「關閉」按鈕來關閉。</p>
-          </div>
+      {/* 這裡是主頁面的其他可互動內容 */}
+      <div style={mainContentStyle}>
+        <h2>主頁面內容區域</h2>
+        <p>您可以點擊這裡的文字或下方的按鈕，即使面板已開啟。</p>
+        <button style={buttonStyle} onClick={() => alert('主頁面按鈕被點擊！')}>
+          主頁面測試按鈕
+        </button>
+      </div>
+
+      {/* 浮動面板組件 (只有 isPanelOpen 為 true 時才渲染) */}
+      {isPanelOpen && (
+        <div style={panelStyle}>
+          <h3>浮動面板</h3>
+          <p>這是浮動面板的內容。</p>
+          <p>您可以將此面板拖曳或調整大小（如果實現了相關邏輯）。</p>
+          <button style={secondaryButtonStyle} onClick={closePanel}>
+            從面板內部關閉
+          </button>
+          {/* 注意：這個面板內部也可以有自己的關閉按鈕，或者完全依賴主頁面的按鈕 */}
         </div>
       )}
     </div>
