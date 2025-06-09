@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head><title>Popup Test</title></head>
+<body>
+    <button onclick="openPopup()">Open Grist Login</button>
+    <script>
+        function openPopup() {
+            const loginUrl = 'https://tiss-grist.fcuai.tw/login'; // 你的 Grist URL
+            const newWin = window.open(loginUrl, 'TestPopup', 'width=600,height=400,noopener,noreferrer');
+            if (newWin && !newWin.closed) {
+                console.log('Popup opened successfully, reference obtained:', newWin);
+                // 你可以在這裡嘗試 newWin.focus() 或設置一個 interval 檢查 newWin.closed
+            } else {
+                console.error('Failed to open popup or get a valid reference. newWin:', newWin, newWin ? newWin.closed : 'N/A');
+                alert('Popup was blocked or could not be controlled.');
+            }
+        }
+    </script>
+</body>
+</html>
