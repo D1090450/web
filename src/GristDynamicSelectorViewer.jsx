@@ -62,6 +62,14 @@ function ModalPage() {
     color: 'white',
   };
 
+  const disabledButtonStyle = {
+    ...buttonStyle,
+    backgroundColor: '#e9ecef', // 淺灰色背景
+    color: '#6c757d',       // 深灰色文字
+    cursor: 'not-allowed',  // 禁用游標
+    opacity: 0.7,           // 稍微透明
+  };
+  
   return (
     <div>
       <h1>我的網頁</h1>
