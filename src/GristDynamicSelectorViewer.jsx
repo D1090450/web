@@ -453,14 +453,14 @@ function GristDynamicSelectorViewer() {
     setInitialApiKeyAttemptFailed(true);
     
     // 停止 GristApiKeyManager 內部的自動重試定時器，因為我們將使用下面的新定時器來控制
-    if (apiKeyManagerRef.current) {
+    if (apiKeyManagerRef) {
         apiKeyManagerRef.current.stopRetrying();
     }
 
     // 創建一個新的定時器，每 2 秒輪詢一次登入狀態
     const checkLoginInterval = setInterval(async () => {
       // 檢查一：用戶是否手動關閉了彈窗
-      if (!gristLoginPopupRef.current || gristLoginPopupRef.current.closed) {
+      if (!gristLoginPopupRef) {
         clearInterval(checkLoginInterval); // 停止輪詢
         localStorage.removeItem('gristLoginPopupOpen');
         gristLoginPopupRef.current = null;
@@ -474,7 +474,7 @@ function GristDynamicSelectorViewer() {
 
       // 檢查二：如果彈窗開啟，嘗試獲取 API Key
       console.log("GristDynamicSelectorViewer: Polling for API Key while popup is open...");
-      if (apiKeyManagerRef.current) {
+      if (apiKeyManagerRef) {
         try {
           const success = await apiKeyManagerRef.current.triggerFetchKeyFromProfile();
           if (success) {
