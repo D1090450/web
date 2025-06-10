@@ -450,14 +450,14 @@ function GristDynamicSelectorViewer() {
     let popupOpenLogCounter = 0; // <--- 新增一個計數器
 
     const checkPopupClosedInterval = setInterval(() => {
-        if (gristLoginPopupRef) {
+        if (gristLoginPopupRef.current) {
             // 彈窗仍然開啟
             popupOpenLogCounter++;
             if (popupOpenLogCounter % 2 === 0) { // 定時器每秒觸發，所以計數器逢2的倍數時即為每2秒
                 if (apiKeyManagerRef.current) {
                     apiKeyManagerRef.current.stopRetrying();
+                    console.log('Grist 登入彈窗目前是開啟狀態 (每2秒檢測一次)');
                 }
-                console.log('Grist 登入彈窗目前是開啟狀態 (每2秒檢測一次)');
             }
         } else {
             // 彈窗已關閉或不存在
