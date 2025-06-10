@@ -443,6 +443,7 @@ function GristDynamicSelectorViewer() {
     }
     const loginUrl = `${GRIST_API_BASE_URL}/login`;
     gristLoginPopupRef.current = window.open(loginUrl, 'GristLoginPopup', 'width=600,height=700,scrollbars=yes,resizable=yes,noreferrer');
+    console.log('創視窗'+gristLoginPopupRef.current)
     localStorage.setItem('gristLoginPopupOpen', 'true'); 
     setStatusMessage('請在新視窗中完成 Grist 登入。本頁面將嘗試自動檢測登入狀態。');
     setInitialApiKeyAttemptFailed(true); 
@@ -454,6 +455,7 @@ function GristDynamicSelectorViewer() {
             // 彈窗仍然開啟
             popupOpenLogCounter++;
             if (popupOpenLogCounter % 2 === 0) { // 定時器每秒觸發，所以計數器逢2的倍數時即為每2秒
+              console.log('計時器內'+gristLoginPopupRef.current)
                 if (apiKeyManagerRef.current) {
                     apiKeyManagerRef.current.stopRetrying();
                     console.log('Grist 登入彈窗目前是開啟狀態 (每2秒檢測一次)');
