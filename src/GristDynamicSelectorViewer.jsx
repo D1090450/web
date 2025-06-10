@@ -106,7 +106,7 @@ const GristApiKeyManager = React.forwardRef(({ apiKey: apiKeyProp, onApiKeyUpdat
                             localStorage.removeItem('gristLoginPopupOpen');
                         } else if (!localStorage.getItem('gristLoginPopupOpen')) {
                             // 如果彈窗沒開，且重試失敗，則不再繼續重試，避免無限循環
-                            console.log("GristApiKeyManager: Popup not open and retry failed, stopping retries.");
+                            console.log("GristApiKeyManager: First popup not open and retry failed, stopping retries.");
                             clearTimeout(retryTimerRef.current);
                         }
                     });
@@ -437,45 +437,63 @@ function GristDynamicSelectorViewer() {
   }, [apiKey, selectedDocId, selectedTableId, makeGristApiRequest, filterQuery, sortQuery]); // makeGristApiRequest 應是穩定的
 
   const openGristLoginPopup = useCallback(() => {
+    // 如果彈窗已存在且未關閉，則聚焦，不重複開啟
     if (gristLoginPopupRef.current && !gristLoginPopupRef.current.closed) {
       gristLoginPopupRef.current.focus();
       return;
     }
+
+    // 開啟登入視窗
     const loginUrl = `${GRIST_API_BASE_URL}/login`;
     gristLoginPopupRef.current = window.open(loginUrl, 'GristLoginPopup', 'width=600,height=700,scrollbars=yes,resizable=yes,noreferrer');
-    console.log('創視窗:', gristLoginPopupRef.current);
-    localStorage.setItem('gristLoginPopupOpen', 'true'); 
-    setStatusMessage('請在新視窗中完成 Grist 登入。本頁面將嘗試自動檢測登入狀態。');
-    setInitialApiKeyAttemptFailed(true); 
+    localStorage.setItem('gristLoginPopupOpen', 'true');
+    setStatusMessage('請在新視窗中完成 Grist 登入。登入成功後本頁面將會自動反應。');
+    
+    // 觸發 API Key 管理器的重試邏輯（雖然我們下面的定時器會接管，但這確保了狀態一致）
+    setInitialApiKeyAttemptFailed(true);
+    
+    // 停止 GristApiKeyManager 內部的自動重試定時器，因為我們將使用下面的新定時器來控制
+    if (apiKeyManagerRef.current) {
+        apiKeyManagerRef.current.stopRetrying();
+    }
 
-    let popupOpenLogCounter = 0; // <--- 新增一個計數器
-
-    const checkPopupClosedInterval = setInterval(() => {
-        if (gristLoginPopupRef.current) {
-            // 彈窗仍然開啟
-            popupOpenLogCounter++;
-            if (popupOpenLogCounter % 2 === 0) { // 定時器每秒觸發，所以計數器逢2的倍數時即為每2秒
-              console.log('計時器內: ',gristLoginPopupRef.current)
-                if (apiKeyManagerRef.current) {
-                    apiKeyManagerRef.current.stopRetrying();
-                    console.log('Grist 登入彈窗目前是開啟狀態 (每2秒檢測一次)');
-                }
-            }
-        } else {
-            // 彈窗已關閉或不存在
-            clearInterval(checkPopupClosedInterval);
-            localStorage.removeItem('gristLoginPopupOpen');
-            gristLoginPopupRef.current = null;
-            if (!apiKey) { // 檢查 apiKey state，而不是直接讀 localStorage
-                setStatusMessage('Grist 登入視窗已關閉。如果尚未登入，請點擊下方按鈕重試。');
-                if (apiKeyManagerRef.current) {
-                    apiKeyManagerRef.current.stopRetrying();
-                }
-            }
-            // popupOpenLogCounter 會隨著 openGristLoginPopup 函數作用域結束而自然消失，
-            // 或者在下次 openGristLoginPopup 被調用時重置。
+    // 創建一個新的定時器，每 2 秒輪詢一次登入狀態
+    const checkLoginInterval = setInterval(async () => {
+      // 檢查一：用戶是否手動關閉了彈窗
+      if (!gristLoginPopupRef.current || gristLoginPopupRef.current.closed) {
+        clearInterval(checkLoginInterval); // 停止輪詢
+        localStorage.removeItem('gristLoginPopupOpen');
+        gristLoginPopupRef.current = null;
+        
+        // 只有在最終仍未獲取到 apiKey 的情況下，才更新狀態提示
+        if (!apiKey) {
+          setStatusMessage('Grist 登入視窗已關閉。如果尚未登入，請點擊按鈕重試。');
         }
-    }, 1000); // 定時器每 1000ms (1秒) 執行一次
+        return; // 結束本次定時器回調
+      }
+
+      // 檢查二：如果彈窗開啟，嘗試獲取 API Key
+      console.log("GristDynamicSelectorViewer: Polling for API Key while popup is open...");
+      if (apiKeyManagerRef.current) {
+        try {
+          const success = await apiKeyManagerRef.current.triggerFetchKeyFromProfile();
+          if (success) {
+            // 成功獲取！
+            console.log("GristDynamicSelectorViewer: API Key poll successful. Stopping poll.");
+            clearInterval(checkLoginInterval); // 停止輪詢
+            // GristApiKeyManager 內部的 onApiKeyUpdate -> handleApiKeyUpdate 會處理後續邏輯，
+            // 包括關閉彈窗和更新狀態，所以我們這裡只需要停止定時器即可。
+          } else {
+             // 尚未成功，等待下一次輪詢
+             console.log("GristDynamicSelectorViewer: API Key poll failed, will try again in 2 seconds.");
+          }
+        } catch (error) {
+            console.error("GristDynamicSelectorViewer: Error during polling for API Key:", error);
+            // 即使出錯也繼續輪詢，可能是暫時的網絡問題
+        }
+      }
+    }, 2000); // 每 2000 毫秒 (2秒) 嘗試一次
+
   }, [apiKey, setStatusMessage, setInitialApiKeyAttemptFailed]);
 
   // 初始加載時，如果 localStorage 和 state 中都沒有 key，則設置 initialApiKeyAttemptFailed
