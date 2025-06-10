@@ -436,6 +436,7 @@ function GristDynamicSelectorViewer() {
     } finally { setIsLoadingData(false); }
   }, [apiKey, selectedDocId, selectedTableId, makeGristApiRequest, filterQuery, sortQuery]); // makeGristApiRequest 應是穩定的
 
+  // ******************** MODIFIED FUNCTION ********************
   const openGristLoginPopup = useCallback(() => {
     // 如果彈窗已存在且未關閉，則聚焦，不重複開啟
     if (gristLoginPopupRef.current && !gristLoginPopupRef.current.closed) {
@@ -453,14 +454,14 @@ function GristDynamicSelectorViewer() {
     setInitialApiKeyAttemptFailed(true);
     
     // 停止 GristApiKeyManager 內部的自動重試定時器，因為我們將使用下面的新定時器來控制
-    if (apiKeyManagerRef) {
+    if (apiKeyManagerRef.current) {
         apiKeyManagerRef.current.stopRetrying();
     }
 
     // 創建一個新的定時器，每 2 秒輪詢一次登入狀態
     const checkLoginInterval = setInterval(async () => {
       // 檢查一：用戶是否手動關閉了彈窗
-      if (!gristLoginPopupRef) {
+      if (!gristLoginPopupRef.current || gristLoginPopupRef.current.closed) {
         clearInterval(checkLoginInterval); // 停止輪詢
         localStorage.removeItem('gristLoginPopupOpen');
         gristLoginPopupRef.current = null;
@@ -474,7 +475,7 @@ function GristDynamicSelectorViewer() {
 
       // 檢查二：如果彈窗開啟，嘗試獲取 API Key
       console.log("GristDynamicSelectorViewer: Polling for API Key while popup is open...");
-      if (apiKeyManagerRef) {
+      if (apiKeyManagerRef.current) {
         try {
           const success = await apiKeyManagerRef.current.triggerFetchKeyFromProfile();
           if (success) {
@@ -495,6 +496,7 @@ function GristDynamicSelectorViewer() {
     }, 2000); // 每 2000 毫秒 (2秒) 嘗試一次
 
   }, [apiKey, setStatusMessage, setInitialApiKeyAttemptFailed]);
+  // **********************************************************
 
   // 初始加載時，如果 localStorage 和 state 中都沒有 key，則設置 initialApiKeyAttemptFailed
   useEffect(() => {
