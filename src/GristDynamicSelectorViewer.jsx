@@ -189,7 +189,7 @@ function GristDynamicSelectorViewer() {
 
       if (autoFetchedSuccess && gristLoginPopupRef) {
         try {
-            gristLoginPopupRef.current.close();
+            gristLoginPopupRef.close();
             localStorage.removeItem('gristLoginPopupOpen');
             console.log("GristDynamicSelectorViewer: Attempted to close Grist login popup.");
         } catch (e) {
@@ -481,9 +481,6 @@ function GristDynamicSelectorViewer() {
             // 成功獲取！
             console.log("GristDynamicSelectorViewer: API Key poll successful. Stopping poll.");
             clearInterval(checkLoginInterval); // 停止輪詢
-            gristLoginPopupRef.current.close();
-            // GristApiKeyManager 內部的 onApiKeyUpdate -> handleApiKeyUpdate 會處理後續邏輯，
-            // 包括關閉彈窗和更新狀態，所以我們這裡只需要停止定時器即可。
           } else {
              // 尚未成功，等待下一次輪詢
              console.log("GristDynamicSelectorViewer: API Key poll failed, will try again in 2 seconds.");
