@@ -187,7 +187,7 @@ function GristDynamicSelectorViewer() {
       setShowLoginPrompt(false); // setShowLoginPrompt 是穩定的
       setInitialApiKeyAttemptFailed(false); // setInitialApiKeyAttemptFailed 是穩定的
 
-      if (autoFetchedSuccess && gristLoginPopupRef.current && !gristLoginPopupRef.current.closed) {
+      if (autoFetchedSuccess && gristLoginPopupRef) {
         try {
             gristLoginPopupRef.current.close();
             localStorage.removeItem('gristLoginPopupOpen');
