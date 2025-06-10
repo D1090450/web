@@ -3,7 +3,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 
 const GRIST_API_BASE_URL = 'https://tiss-grist.fcuai.tw';
 const TARGET_ORG_DOMAIN = 'fcuai.tw';
-const API_KEY_RETRY_INTERVAL = 200;
+const API_KEY_RETRY_INTERVAL = 200; // GristApiKeyManager's internal retry
 
 const theme = {
   textColor: '#333740',
@@ -31,7 +31,7 @@ const GristApiKeyManager = React.forwardRef(({ apiKey: apiKeyProp, onApiKeyUpdat
   const retryTimerRef = useRef(null);
 
   const fetchKeyFromProfile = useCallback(async (isRetry = false) => {
-    if (isFetching && !isRetry) return false; // 返回 Promise<boolean>
+    if (isFetching && !isRetry) return false;
 
     setIsFetching(true);
     if (!isRetry) {
@@ -54,7 +54,7 @@ const GristApiKeyManager = React.forwardRef(({ apiKey: apiKeyProp, onApiKeyUpdat
         throw new Error('獲取到的 API Key 似乎無效。');
       }
       setLocalApiKey(fetchedKey);
-      onApiKeyUpdate(fetchedKey, true); // true for autoFetchedSuccess
+      onApiKeyUpdate(fetchedKey, true); 
       onStatusUpdate('API Key 自動獲取成功！');
       clearTimeout(retryTimerRef.current);
       return true;
@@ -63,12 +63,12 @@ const GristApiKeyManager = React.forwardRef(({ apiKey: apiKeyProp, onApiKeyUpdat
       if (!isRetry) {
         onStatusUpdate(`自動獲取 API Key 失敗: ${error.message}. 請確保您已登入 Grist。`);
       }
-      onApiKeyUpdate('', false); // false for autoFetchedSuccess
+      onApiKeyUpdate('', false); 
       return false;
     } finally {
       setIsFetching(false);
     }
-  }, [onApiKeyUpdate, onStatusUpdate]); // isFetching 移除，因為它在函數內部管理
+  }, [onApiKeyUpdate, onStatusUpdate]);
 
   const handleManualSubmit = useCallback(() => {
     clearTimeout(retryTimerRef.current);
@@ -86,35 +86,34 @@ const GristApiKeyManager = React.forwardRef(({ apiKey: apiKeyProp, onApiKeyUpdat
   }, [apiKeyProp]);
 
   useEffect(() => {
-    if (apiKeyProp) { // 如果父組件已經有 apiKey，則清除定時器
+    if (apiKeyProp) { 
         clearTimeout(retryTimerRef.current);
         return;
     }
 
-    if (initialAttemptFailed && !apiKeyProp) { // 只有在父組件指示初次嘗試失敗且當前沒有key時才啟動
+    if (initialAttemptFailed && !apiKeyProp) { 
         console.log("GristApiKeyManager: Initial attempt failed, starting fetch/retry logic.");
-        // 立即嘗試一次
-        fetchKeyFromProfile(false).then(success => { // isRetry = false for the first call in this effect
-            if (!success) { // 如果這次嘗試仍然失敗，則啟動定時器
+        fetchKeyFromProfile(false).then(success => { 
+            if (!success) { 
                 if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
                 retryTimerRef.current = setTimeout(function zichzelf() {
-                    console.log("GristApiKeyManager: Retrying to fetch API key...");
-                    fetchKeyFromProfile(true).then(retrySuccess => { // isRetry = true for subsequent calls
+                    console.log("GristApiKeyManager: Retrying to fetch API key (internal retry)...");
+                    fetchKeyFromProfile(true).then(retrySuccess => { 
                         if (!retrySuccess && localStorage.getItem('gristLoginPopupOpen') === 'true') {
                             retryTimerRef.current = setTimeout(zichzelf, API_KEY_RETRY_INTERVAL);
                         } else if (retrySuccess) {
-                            localStorage.removeItem('gristLoginPopupOpen');
+                            localStorage.removeItem('gristLoginPopupOpen'); // Clean up flag on success
                         } else if (!localStorage.getItem('gristLoginPopupOpen')) {
-                            // 如果彈窗沒開，且重試失敗，則不再繼續重試，避免無限循環
-                            console.log("GristApiKeyManager: Popup not open and retry failed, stopping retries.");
+                            console.log("GristApiKeyManager: Popup not open and retry failed, stopping internal retries.");
                             clearTimeout(retryTimerRef.current);
                         }
                     });
                 }, API_KEY_RETRY_INTERVAL);
+            } else {
+                 localStorage.removeItem('gristLoginPopupOpen'); // Clean up flag on immediate success
             }
         });
     } else {
-        // 如果不滿足重試條件 (例如 initialAttemptFailed 為 false)，確保清除任何可能的舊定時器
         clearTimeout(retryTimerRef.current);
     }
     
@@ -125,12 +124,12 @@ const GristApiKeyManager = React.forwardRef(({ apiKey: apiKeyProp, onApiKeyUpdat
 
   React.useImperativeHandle(ref, () => ({
     triggerFetchKeyFromProfile: () => {
-        console.log("GristApiKeyManager: Manually triggered fetchKeyFromProfile.");
-        clearTimeout(retryTimerRef.current);
-        return fetchKeyFromProfile(false); // isRetry = false when manually triggered
+        console.log("GristApiKeyManager: Manually triggered fetchKeyFromProfile (one-shot).");
+        clearTimeout(retryTimerRef.current); // Stop internal retries if a manual trigger is fired
+        return fetchKeyFromProfile(false); 
     },
     stopRetrying: () => {
-        console.log("GristApiKeyManager: Stopping retries.");
+        console.log("GristApiKeyManager: Stopping internal retries.");
         clearTimeout(retryTimerRef.current);
     }
   }));
@@ -177,52 +176,51 @@ function GristDynamicSelectorViewer() {
   const apiKeyManagerRef = useRef(null);
   const gristLoginPopupRef = useRef(null);
   const [initialApiKeyAttemptFailed, setInitialApiKeyAttemptFailed] = useState(false);
+  const popupCheckIntervalIdRef = useRef(null); // Ref for the interval ID
 
-  // handleApiKeyUpdate 的 useCallback 依賴項應為空，或者只包含 setter 函數
   const handleApiKeyUpdate = useCallback((key, autoFetchedSuccess = false) => {
     console.log(`GristDynamicSelectorViewer: handleApiKeyUpdate called with key: ${key ? '******' : '""'}, autoFetchedSuccess: ${autoFetchedSuccess}`);
-    setApiKey(key); // setApiKey 是穩定的
+    setApiKey(key); 
     if (key) {
       localStorage.setItem('gristApiKey', key);
-      setShowLoginPrompt(false); // setShowLoginPrompt 是穩定的
-      setInitialApiKeyAttemptFailed(false); // setInitialApiKeyAttemptFailed 是穩定的
+      setShowLoginPrompt(false); 
+      setInitialApiKeyAttemptFailed(false); 
 
-      if (autoFetchedSuccess && gristLoginPopupRef.current && !gristLoginPopupRef.current.closed) {
+      if (gristLoginPopupRef.current && !gristLoginPopupRef.current.closed) {
         try {
             gristLoginPopupRef.current.close();
-            localStorage.removeItem('gristLoginPopupOpen');
-            console.log("GristDynamicSelectorViewer: Attempted to close Grist login popup.");
+            console.log("GristDynamicSelectorViewer: Attempted to close Grist login popup from handleApiKeyUpdate.");
         } catch (e) {
-            console.warn("GristDynamicSelectorViewer: Could not automatically close Grist login popup:", e);
-            setStatusMessage("Grist 登入成功！您可以手動關閉登入視窗。"); // setStatusMessage 是穩定的
+            console.warn("GristDynamicSelectorViewer: Could not automatically close Grist login popup from handleApiKeyUpdate:", e);
+            setStatusMessage("Grist 登入成功！您可以手動關閉登入視窗。"); 
         }
         gristLoginPopupRef.current = null;
       }
-       // 只有在訊息確實需要更新時才更新，避免不必要的 statusMessage 變化觸發 makeGristApiRequest (如果它錯誤地依賴了 statusMessage)
+      localStorage.removeItem('gristLoginPopupOpen'); // Ensure flag is removed on successful key update
+
        if (autoFetchedSuccess) {
            setStatusMessage(prev => prev.includes('API Key 自動獲取成功！') ? prev : 'API Key 自動獲取成功！正在準備加載數據...');
        } else {
            setStatusMessage(prev => prev.includes('手動輸入的 API Key 已設定') ? prev : 'API Key 已設定。正在準備加載數據...');
        }
 
-    } else {
+    } else { // Key is empty, meaning fetch failed or key was cleared
       localStorage.removeItem('gristApiKey');
-      if (!autoFetchedSuccess) {
+      // Only show login prompt if it wasn't an auto-fetch failure from GristApiKeyManager's internal retry while popup is open
+      if (!autoFetchedSuccess && !localStorage.getItem('gristLoginPopupOpen')) {
         setShowLoginPrompt(true);
       }
-      // 只有在非自動重試失敗（例如初始失敗或手動清除）時才立即設置為true
-      // 如果是自動重試循環中的失敗，則 GristApiKeyManager 內部會處理重試，這裡不需要再次強制
-      // 關鍵是 GristApiKeyManager 的 initialAttemptFailed prop
-      // 當用戶打開彈窗時，我們會明確設置 initialAttemptFailed = true
-      if (!localStorage.getItem('gristLoginPopupOpen') && !autoFetchedSuccess) {
-          setInitialApiKeyAttemptFailed(true);
-      } else if (localStorage.getItem('gristLoginPopupOpen')) {
-          // 如果彈窗開著，保持 initialApiKeyAttemptFailed 為 true 以便 GristApiKeyManager 繼續嘗試
+      
+      // Set initialApiKeyAttemptFailed to true if the popup is not open (or was just closed) and we failed.
+      // If popup is open, GristApiKeyManager's logic will prevail.
+      if (!localStorage.getItem('gristLoginPopupOpen')) {
           setInitialApiKeyAttemptFailed(true);
       }
-      setStatusMessage(prev => prev.includes('API Key 獲取失敗或已清除') ? prev : 'API Key 獲取失敗或已清除。');
+      // Don't overwrite specific failure messages from GristApiKeyManager
+      if (!statusMessage.includes("自動獲取 API Key 失敗")) {
+        setStatusMessage(prev => prev.includes('API Key 獲取失敗或已清除') ? prev : 'API Key 獲取失敗或已清除。');
+      }
     }
-    // 清理後續數據狀態
     setCurrentOrgId(null);
     setDocuments([]);
     setSelectedDocId('');
@@ -232,13 +230,15 @@ function GristDynamicSelectorViewer() {
     setFilterQuery('');
     setSortQuery('');
     setDataError('');
-  }, []); // 依賴項為空，因為所有內部調用的都是 state setters，它們是穩定的
+  }, [statusMessage]); // statusMessage added to prevent overwriting detailed error.
 
   const makeGristApiRequest = useCallback(async (endpoint, method = 'GET', params = null) => {
     if (!apiKey) {
       console.warn("makeGristApiRequest: API Key is not set. Aborting request to", endpoint);
+      // Don't set status message here, let calling function handle UI updates
       throw new Error('API Key 未設定，無法發送請求。');
     }
+    // ... (rest of makeGristApiRequest is the same)
     console.log(`makeGristApiRequest: Fetching ${endpoint} with apiKey.`);
     let url = `${GRIST_API_BASE_URL}${endpoint}`;
     const queryParams = new URLSearchParams();
@@ -262,34 +262,47 @@ function GristDynamicSelectorViewer() {
       },
     });
 
-    const responseData = await response.json().catch(async () => { // 修改這裡以處理非 JSON 響應
-      const text = await response.text();
-      throw new Error(`HTTP error ${response.status}: ${text || response.statusText} (Non-JSON response)`);
-    });
+    // Try to parse as JSON, if fails, get text for error message
+    let responseData;
+    const responseText = await response.text(); // Get text first
+    try {
+        responseData = JSON.parse(responseText);
+    } catch (e) {
+        // If JSON parsing fails but response was ok, maybe it's plain text (like API key itself)
+        // For errors, we'll use the text.
+        if (!response.ok) {
+            throw new Error(`HTTP error ${response.status}: ${responseText || response.statusText} (Non-JSON response)`);
+        }
+        // If response.ok and not JSON, it might be an unexpected success format.
+        // For this app, most success responses are JSON. If a specific endpoint returns text on success, handle it there.
+        // For now, assume non-JSON on success is an issue for API calls expecting JSON.
+        // However, /api/profile/apiKey is an exception handled by GristApiKeyManager.
+        responseData = responseText; // Or handle as an error if JSON was strictly expected
+    }
+
 
     if (!response.ok) {
-      const errorMsg = responseData?.error?.message || responseData?.error || responseData?.message || `HTTP error ${response.status}`;
-      console.error(`Grist API Error for ${method} ${url}:`, responseData);
+      const errorMsg = responseData?.error?.message || responseData?.error || responseData?.message || responseText || `HTTP error ${response.status}`;
+      console.error(`Grist API Error for ${method} ${url}:`, errorMsg, responseData);
       if (response.status === 401 || response.status === 403) {
-        // API Key 失效，觸發重新登入/API Key 清除流程
-        handleApiKeyUpdate(''); // 清除 API Key
+        handleApiKeyUpdate(''); 
+        setStatusMessage('API Key 無效或已過期，請重新登入 Grist 並獲取新的 Key。');
       }
       throw new Error(errorMsg);
     }
     return responseData;
-  }, [apiKey, handleApiKeyUpdate]); // 關鍵：makeGristApiRequest 只應依賴 apiKey 和穩定的 handleApiKeyUpdate
+  }, [apiKey, handleApiKeyUpdate]); 
 
-  // 獲取組織 ID
   useEffect(() => {
     if (!apiKey) {
       console.log("useEffect (getOrgId): No API Key, skipping.");
-      setCurrentOrgId(null); // 確保 apiKey 為空時，orgId 也清空
-      setDocuments([]); // 同時清空文檔
+      setCurrentOrgId(null); 
+      setDocuments([]); 
       return;
     }
     console.log("useEffect (getOrgId): API Key present, attempting to fetch org ID.");
     const getOrgId = async () => {
-      setIsLoadingDocs(true); // 開始加載的總指示器
+      setIsLoadingDocs(true); 
       setStatusMessage('API Key 有效，正在獲取組織資訊...');
       try {
         const orgsData = await makeGristApiRequest('/api/orgs');
@@ -299,56 +312,66 @@ function GristDynamicSelectorViewer() {
           if (TARGET_ORG_DOMAIN) {
             const targetOrg = orgsData.find(org => org.domain === TARGET_ORG_DOMAIN);
             if (targetOrg) determinedOrgId = targetOrg.id;
-            else determinedOrgId = orgsData[0].id;
+            else determinedOrgId = orgsData[0].id; // Default to first if target not found
           } else {
             determinedOrgId = orgsData[0].id;
           }
-        } else if (orgsData && orgsData.id) { // 如果 /api/orgs 直接返回單個組織對象
+        } else if (orgsData && orgsData.id) { 
             determinedOrgId = orgsData.id;
         }
 
         if (determinedOrgId) {
           console.log("useEffect (getOrgId): Determined Org ID:", determinedOrgId);
           setCurrentOrgId(determinedOrgId);
-          // 不要在這裡設置 isLoadingDocs(false)，讓下一個 effect 控制
         } else {
-          throw new Error('未能獲取到有效的組織 ID。');
+          throw new Error('未能獲取到有效的組織 ID。API 返回的組織數據可能為空或格式不正確。');
         }
       } catch (error) {
         console.error('useEffect (getOrgId): Error fetching org ID:', error);
         setStatusMessage(`獲取組織 ID 失敗: ${error.message}`);
-        setCurrentOrgId(null); // 清空 orgId
-        setDocuments([]); // 清空文檔
-        setIsLoadingDocs(false); // 出錯時結束加載
+        setCurrentOrgId(null); 
+        setDocuments([]); 
+        setIsLoadingDocs(false); 
       }
+      // isLoadingDocs will be set to false in the fetchDocsFromWorkspaces effect or its error handling
     };
     getOrgId();
-  }, [apiKey, makeGristApiRequest]); // 只依賴 apiKey 和穩定的 makeGristApiRequest
+  }, [apiKey, makeGristApiRequest]); 
 
-  // 獲取文檔列表
   useEffect(() => {
-    if (!currentOrgId || !apiKey) { // 增加 !apiKey 判斷
+    if (!currentOrgId || !apiKey) { 
       console.log("useEffect (fetchDocs): No currentOrgId or no API Key, skipping.");
-      setDocuments([]); // 確保 currentOrgId 或 apiKey 為空時，文檔列表也清空
+      setDocuments([]); 
+      // If currentOrgId is null due to previous error, isLoadingDocs might be true. Reset it.
+      if (!currentOrgId) setIsLoadingDocs(false);
       return;
     }
     console.log("useEffect (fetchDocs): currentOrgId present, attempting to fetch documents for org:", currentOrgId);
     const fetchDocsFromWorkspaces = async () => {
-      setIsLoadingDocs(true); // 確保在請求前設置
+      setIsLoadingDocs(true); 
       setStatusMessage(`正在從組織 ID ${currentOrgId} 獲取文檔列表...`);
       try {
         const workspacesData = await makeGristApiRequest(`/api/orgs/${currentOrgId}/workspaces`);
         console.log("useEffect (fetchDocs): Workspaces data fetched:", workspacesData);
         const allDocs = [];
         let docNameCounts = {};
-        workspacesData.forEach(workspace => {
-          if (workspace.docs && Array.isArray(workspace.docs)) {
-            workspace.docs.forEach(doc => {
-              docNameCounts[doc.name] = (docNameCounts[doc.name] || 0) + 1;
-              allDocs.push({ id: doc.id, name: doc.name, workspaceName: workspace.name, workspaceId: workspace.id });
+        // Check if workspacesData is an array before calling forEach
+        if (Array.isArray(workspacesData)) {
+            workspacesData.forEach(workspace => {
+            if (workspace.docs && Array.isArray(workspace.docs)) {
+                workspace.docs.forEach(doc => {
+                docNameCounts[doc.name] = (docNameCounts[doc.name] || 0) + 1;
+                allDocs.push({ id: doc.id, name: doc.name, workspaceName: workspace.name, workspaceId: workspace.id });
+                });
+            }
             });
-          }
-        });
+        } else {
+            console.warn("useEffect (fetchDocs): workspacesData is not an array.", workspacesData);
+            // Handle case where a single workspace might be returned directly, if applicable
+            // Or throw an error if an array is always expected
+            throw new Error("預期的工作區列表格式不正確。");
+        }
+
         const processedDocs = allDocs.map(doc => ({
             ...doc,
             displayName: docNameCounts[doc.name] > 1 ? `${doc.name} (${doc.workspaceName})` : doc.name
@@ -370,123 +393,189 @@ function GristDynamicSelectorViewer() {
       }
     };
     fetchDocsFromWorkspaces();
-  }, [currentOrgId, apiKey, makeGristApiRequest]); // 只依賴 currentOrgId, apiKey 和穩定的 makeGristApiRequest
+  }, [currentOrgId, apiKey, makeGristApiRequest]); 
 
-  // 獲取表格列表
   useEffect(() => {
-    if (!selectedDocId || !apiKey) { // 增加 !apiKey 判斷
+    if (!selectedDocId || !apiKey) { 
       console.log("useEffect (fetchTables): No selectedDocId or no API Key, skipping.");
       setTables([]);
-      setSelectedTableId(''); // 清空選定的表格ID
+      setSelectedTableId(''); 
       return;
     }
     console.log("useEffect (fetchTables): selectedDocId present, attempting to fetch tables for doc:", selectedDocId);
     const fetchTables = async () => {
       setIsLoadingTables(true);
-      setStatusMessage(`正在獲取文檔 "${selectedDocId}" 的表格列表...`);
+      setStatusMessage(`正在獲取文檔 ID "${selectedDocId}" 的表格列表...`);
       setDataError('');
       try {
+        // The endpoint for tables within a doc usually is /api/docs/{docId}/tables
         const data = await makeGristApiRequest(`/api/docs/${selectedDocId}/tables`);
         console.log("useEffect (fetchTables): Tables data fetched:", data);
-        const tableList = data.tables || (Array.isArray(data) ? data : []);
+        // Grist API for tables returns an object like { tables: [...] }
+        const tableList = data.tables || (Array.isArray(data) ? data : []); // Fallback if structure is just an array
+
         if (Array.isArray(tableList)) {
-          setTables(tableList.map(table => ({ id: table.id, name: table.id })));
-          setStatusMessage(tableList.length > 0 ? '表格列表獲取成功。' : '該文檔中未找到表格。');
-        } else { throw new Error('表格列表格式不正確。'); }
+          setTables(tableList.map(table => ({ id: table.id, name: table.id /* or table.tableId if fields exist */ })));
+          setStatusMessage(tableList.length > 0 ? '表格列表獲取成功。請選擇表格。' : '該文檔中未找到表格。');
+        } else { 
+            throw new Error('表格列表格式不正確。'); 
+        }
       } catch (error) {
         console.error('useEffect (fetchTables): Error fetching tables:', error);
         setStatusMessage(`獲取表格列表失敗: ${error.message}`);
         setTables([]);
-      } finally { setIsLoadingTables(false); }
+      } finally { 
+          setIsLoadingTables(false); 
+      }
     };
     fetchTables();
-  }, [selectedDocId, apiKey, makeGristApiRequest]); // 只依賴 selectedDocId, apiKey 和穩定的 makeGristApiRequest
+  }, [selectedDocId, apiKey, makeGristApiRequest]); 
 
-  // 獲取表格數據 (按鈕觸發)
   const handleFetchTableData = useCallback(async () => {
     if (!apiKey || !selectedDocId || !selectedTableId) {
       setDataError('請先設定 API Key 並選擇文檔和表格。');
       return;
     }
     setIsLoadingData(true);
-    // ... (rest of the logic is fine as it's user-triggered)
     setDataError('');
     setTableData(null);
     setColumns([]);
-    setStatusMessage(`正在獲取 ${selectedTableId} 的數據...`);
-    const params = { limit: '50' };
-    if (filterQuery) { try { JSON.parse(filterQuery); params.filter = filterQuery; } catch (e) { setDataError('過濾條件不是有效的 JSON 格式.'); setStatusMessage('過濾條件格式錯誤.'); setIsLoadingData(false); return; }}
+    setStatusMessage(`正在獲取表格 ${selectedTableId} (來自文檔 ${selectedDocId}) 的數據...`);
+    const params = { limit: '50' }; 
+    if (filterQuery) { 
+        try { 
+            JSON.parse(filterQuery); // Validate JSON
+            params.filter = filterQuery; 
+        } catch (e) { 
+            setDataError('過濾條件不是有效的 JSON 格式.'); 
+            setStatusMessage('過濾條件格式錯誤.'); 
+            setIsLoadingData(false); 
+            return; 
+        }
+    }
     if (sortQuery.trim()) { params.sort = sortQuery.trim(); }
     try {
       const data = await makeGristApiRequest(`/api/docs/${selectedDocId}/tables/${selectedTableId}/records`, 'GET', params);
-      if (data && data.records) {
+      if (data && data.records && Array.isArray(data.records)) {
         setTableData(data.records);
         if (data.records.length > 0) {
           const allCols = new Set();
           data.records.forEach(rec => { if (rec.fields) Object.keys(rec.fields).forEach(key => allCols.add(key)); });
           setColumns(Array.from(allCols));
           setStatusMessage(`成功獲取 ${data.records.length} 條數據。`);
-        } else { setColumns([]); setStatusMessage('數據獲取成功，但結果為空。'); }
-      } else { throw new Error('數據格式不正確，缺少 "records" 屬性。'); }
+        } else { 
+            setColumns([]); 
+            setStatusMessage('數據獲取成功，但結果為空。'); 
+        }
+      } else { 
+          throw new Error('數據格式不正確，缺少 "records" 數組。'); 
+      }
     } catch (error) { 
         console.error('handleFetchTableData: Error fetching table data:', error);
         setDataError(`獲取數據失敗: ${error.message}`);
         setStatusMessage(`獲取數據失敗: ${error.message}`);
         setTableData([]); 
-    } finally { setIsLoadingData(false); }
-  }, [apiKey, selectedDocId, selectedTableId, makeGristApiRequest, filterQuery, sortQuery]); // makeGristApiRequest 應是穩定的
+    } finally { 
+        setIsLoadingData(false); 
+    }
+  }, [apiKey, selectedDocId, selectedTableId, makeGristApiRequest, filterQuery, sortQuery]); 
 
   const openGristLoginPopup = useCallback(() => {
     if (gristLoginPopupRef.current && !gristLoginPopupRef.current.closed) {
       gristLoginPopupRef.current.focus();
       return;
     }
+
+    // Clear any existing interval before starting a new one
+    if (popupCheckIntervalIdRef.current) {
+        clearInterval(popupCheckIntervalIdRef.current);
+        popupCheckIntervalIdRef.current = null;
+    }
+
     const loginUrl = `${GRIST_API_BASE_URL}/login`;
     gristLoginPopupRef.current = window.open(loginUrl, 'GristLoginPopup', 'width=600,height=700,scrollbars=yes,resizable=yes,noreferrer');
     localStorage.setItem('gristLoginPopupOpen', 'true'); 
     setStatusMessage('請在新視窗中完成 Grist 登入。本頁面將嘗試自動檢測登入狀態。');
-    setInitialApiKeyAttemptFailed(true); 
+    setInitialApiKeyAttemptFailed(true); // Signal GristApiKeyManager to start/continue retrying
 
-    let popupOpenLogCounter = 0; // <--- 新增一個計數器
-
-    const checkPopupClosedInterval = setInterval(() => {
-        if (gristLoginPopupRef) {
-            // 彈窗仍然開啟
-            popupOpenLogCounter++;
-            if (popupOpenLogCounter % 2 === 0) { // 定時器每秒觸發，所以計數器逢2的倍數時即為每2秒
-                if (apiKeyManagerRef.current) {
-                    apiKeyManagerRef.current.stopRetrying();
+    popupCheckIntervalIdRef.current = setInterval(async () => {
+        if (gristLoginPopupRef.current && !gristLoginPopupRef.current.closed) {
+            // Popup is open, try to fetch API key
+            console.log('GristDynamicSelectorViewer: Login popup open, interval attempting to fetch API key...');
+            if (apiKeyManagerRef.current) {
+                const success = await apiKeyManagerRef.current.triggerFetchKeyFromProfile();
+                if (success) {
+                    console.log('GristDynamicSelectorViewer: API Key fetched successfully by interval.');
+                    // handleApiKeyUpdate (called by triggerFetchKeyFromProfile) should close the popup
+                    // and remove 'gristLoginPopupOpen'. It also updates the apiKey state.
+                    // The interval will be cleared in the 'else' block below on the next tick,
+                    // or we can clear it here.
+                    if (popupCheckIntervalIdRef.current) clearInterval(popupCheckIntervalIdRef.current);
+                    popupCheckIntervalIdRef.current = null;
+                    // Status message is handled by handleApiKeyUpdate or GristApiKeyManager
+                } else {
+                    console.log('GristDynamicSelectorViewer: API Key fetch attempt by interval failed. Popup remains open. Will retry on next interval.');
+                    // Loop continues as interval is not cleared
                 }
-                console.log('Grist 登入彈窗目前是開啟狀態 (每2秒檢測一次)');
             }
         } else {
-            // 彈窗已關閉或不存在
-            clearInterval(checkPopupClosedInterval);
-            localStorage.removeItem('gristLoginPopupOpen');
-            gristLoginPopupRef.current = null;
-            if (!apiKey) { // 檢查 apiKey state，而不是直接讀 localStorage
-                setStatusMessage('Grist 登入視窗已關閉。如果尚未登入，請點擊下方按鈕重試。');
-                if (apiKeyManagerRef.current) {
-                    apiKeyManagerRef.current.stopRetrying();
-                }
-            }
-            // popupOpenLogCounter 會隨著 openGristLoginPopup 函數作用域結束而自然消失，
-            // 或者在下次 openGristLoginPopup 被調用時重置。
-        }
-    }, 1000); // 定時器每 1000ms (1秒) 執行一次
-  }, [apiKey, setStatusMessage, setInitialApiKeyAttemptFailed]);
+            // Popup is closed (manually by user or by successful fetch elsewhere)
+            console.log('GristDynamicSelectorViewer: Login popup closed or not found. Clearing interval.');
+            if (popupCheckIntervalIdRef.current) clearInterval(popupCheckIntervalIdRef.current);
+            popupCheckIntervalIdRef.current = null;
+            localStorage.removeItem('gristLoginPopupOpen'); // Ensure flag is removed
+            
+            if (gristLoginPopupRef.current) gristLoginPopupRef.current = null; // Clear ref to closed window
 
-  // 初始加載時，如果 localStorage 和 state 中都沒有 key，則設置 initialApiKeyAttemptFailed
+            // If popup was closed and we still don't have an API key,
+            // GristApiKeyManager's internal retry (if active) should stop because 'gristLoginPopupOpen' is removed.
+            // We can also explicitly tell it to stop.
+            if (apiKeyManagerRef.current) {
+                apiKeyManagerRef.current.stopRetrying();
+            }
+            
+            // Check current apiKey state. If no key, update status.
+            // Note: 'apiKey' in this closure might be stale.
+            // It's better to rely on GristApiKeyManager/handleApiKeyUpdate to set appropriate status.
+            // However, if manually closed without success, provide feedback.
+            setApiKey(currentKey => { // Use functional update to get latest apiKey
+                if (!currentKey) {
+                     setStatusMessage(prevMsg => {
+                        if (prevMsg.includes("成功")) return prevMsg; // Don't overwrite success
+                        return 'Grist 登入視窗已關閉。如果尚未登入或獲取Key失敗，請重試。';
+                     });
+                }
+                return currentKey;
+            });
+        }
+    }, 3000); // Check every 3 seconds
+  }, [setStatusMessage, setInitialApiKeyAttemptFailed, setApiKey]); // apiKeyManagerRef is stable, apiKey for stale check in functional update
+
   useEffect(() => {
     console.log("GristDynamicSelectorViewer: Initial mount/apiKey check.");
     if (!localStorage.getItem('gristApiKey') && !apiKey) {
       console.log("GristDynamicSelectorViewer: No API key found locally or in state, setting initialAttemptFailed to true.");
       setInitialApiKeyAttemptFailed(true);
-    } else if (apiKey) { // 如果已有 apiKey (例如從 localStorage 成功加載)
+      setShowLoginPrompt(true); // Show prompt if no key on initial load
+    } else if (apiKey) { 
       console.log("GristDynamicSelectorViewer: API key already present, setting initialAttemptFailed to false.");
-      setInitialApiKeyAttemptFailed(false); // 確保不會觸發不必要的初次獲取
+      setInitialApiKeyAttemptFailed(false);
+      setShowLoginPrompt(false);
     }
-  }, []); // 空依賴，僅在組件首次掛載時執行
+  }, []); // apiKey added to deps for re-evaluation if it changes early. Reverted to [] as it's initial setup.
+
+  // Cleanup interval on component unmount
+  useEffect(() => {
+    return () => {
+      if (popupCheckIntervalIdRef.current) {
+        clearInterval(popupCheckIntervalIdRef.current);
+      }
+      if (gristLoginPopupRef.current && !gristLoginPopupRef.current.closed) {
+        gristLoginPopupRef.current.close(); // Close popup if component unmounts
+      }
+      localStorage.removeItem('gristLoginPopupOpen'); // Clean up flag
+    };
+  }, []);
 
 
   return (
@@ -498,11 +587,11 @@ function GristDynamicSelectorViewer() {
         API 目標: <code>{GRIST_API_BASE_URL}</code> (目標組織域名: <code>{TARGET_ORG_DOMAIN || '未指定'}</code>)
       </p>
 
-      {statusMessage && ( <p style={{ padding: '12px 15px', backgroundColor: statusMessage.includes('失敗') || statusMessage.includes('錯誤') || statusMessage.includes('尚未登入') ? theme.errorColorBg : theme.successColorBg, border: `1px solid ${statusMessage.includes('失敗') || statusMessage.includes('錯誤') || statusMessage.includes('尚未登入') ? theme.errorColor : theme.successColor}`, color: statusMessage.includes('失敗') || statusMessage.includes('錯誤') || statusMessage.includes('尚未登入') ? theme.errorColor : theme.successColor, marginTop: '10px', marginBottom: '20px', borderRadius: theme.borderRadius, fontSize: theme.fontSizeSmall, textAlign: 'center', }}> {statusMessage} </p> )}
+      {statusMessage && ( <p style={{ padding: '12px 15px', backgroundColor: statusMessage.includes('失敗') || statusMessage.includes('錯誤') || statusMessage.includes('尚未登入') || statusMessage.includes('無效') ? theme.errorColorBg : theme.successColorBg, border: `1px solid ${statusMessage.includes('失敗') || statusMessage.includes('錯誤') || statusMessage.includes('尚未登入')|| statusMessage.includes('無效') ? theme.errorColor : theme.successColor}`, color: statusMessage.includes('失敗') || statusMessage.includes('錯誤') || statusMessage.includes('尚未登入') || statusMessage.includes('無效') ? theme.errorColor : theme.successColor, marginTop: '10px', marginBottom: '20px', borderRadius: theme.borderRadius, fontSize: theme.fontSizeSmall, textAlign: 'center', }}> {statusMessage} </p> )}
 
       <GristApiKeyManager
         ref={apiKeyManagerRef}
-        apiKey={apiKey} // Pass the current apiKey state
+        apiKey={apiKey}
         onApiKeyUpdate={handleApiKeyUpdate}
         onStatusUpdate={setStatusMessage}
         initialAttemptFailed={initialApiKeyAttemptFailed}
@@ -518,6 +607,7 @@ function GristDynamicSelectorViewer() {
           </button>
           <button 
             onClick={() => apiKeyManagerRef.current && apiKeyManagerRef.current.triggerFetchKeyFromProfile()}
+            disabled={!apiKeyManagerRef.current} // Disable if ref not ready
             style={{ padding: '10px 15px', backgroundColor: '#6c757d', color: theme.primaryColorText, border: 'none', borderRadius: theme.borderRadius, cursor: 'pointer'}}
           >
             手動重試獲取 API Key
@@ -535,6 +625,7 @@ function GristDynamicSelectorViewer() {
                 setSelectedDocId(e.target.value); 
                 setSelectedTableId(''); 
                 setTableData(null); 
+                setColumns([]);
                 setFilterQuery(''); 
                 setSortQuery(''); 
                 setDataError(''); 
@@ -555,6 +646,7 @@ function GristDynamicSelectorViewer() {
                 onChange={(e) => { 
                     setSelectedTableId(e.target.value); 
                     setTableData(null); 
+                    setColumns([]);
                     setFilterQuery(''); 
                     setSortQuery(''); 
                     setDataError(''); 
@@ -606,7 +698,7 @@ function GristDynamicSelectorViewer() {
                   <td style={{ padding: '10px', whiteSpace: 'nowrap', color: theme.textColorLight, position: 'sticky', left: 0, backgroundColor: rowIndex % 2 === 0 ? '#fff' : theme.surfaceColor, zIndex: 1, borderRight: `1px solid ${theme.borderColor}` }}>{record.id}</td>
                   {columns.map((col) => (
                     <td key={`${record.id}-${col}`} style={{ padding: '10px', whiteSpace: 'nowrap', color: theme.textColorLight }}>
-                      {record.fields && record.fields[col] !== undefined && record.fields[col] !== null
+                      {record.fields && typeof record.fields === 'object' && record.fields[col] !== undefined && record.fields[col] !== null
                         ? (typeof record.fields[col] === 'object' ? JSON.stringify(record.fields[col]) : String(record.fields[col]))
                         : ''}
                     </td>
