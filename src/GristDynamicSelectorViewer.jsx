@@ -92,7 +92,7 @@ const GristApiKeyManager = React.forwardRef(({ apiKey, onApiKeyUpdate, onStatusU
         if (!response.ok || !fetchedKey || fetchedKey.includes('<') || fetchedKey.length < 32) throw new Error('獲取 API Key 無效');
         onApiKeyUpdate(fetchedKey.trim(), true);
         return true;
-      } catch (error) { onStatusUpdate(`自動獲取失敗: ${error.message}`); return false; }
+      } catch (error) { console.log(`自動獲取失敗: ${error.message}`); return false; }
     }, [onApiKeyUpdate, onStatusUpdate]);
     useEffect(() => { if (initialAttemptFailed && !apiKey) fetchKeyFromProfile(); }, [initialAttemptFailed, apiKey, fetchKeyFromProfile]);
     React.useImperativeHandle(ref, () => ({ triggerFetchKeyFromProfile: fetchKeyFromProfile }));
@@ -239,7 +239,6 @@ function GristDynamicSelectorViewer() {
     const hasErrorStatus = statusMessage.includes('失敗') || statusMessage.includes('錯誤') || statusMessage.includes('失效') || dataError;
   
     return (
-        // 這就是我們的 "畫"，它只負責自己的內容
         <div style={styles.container}>
             <div style={styles.header}>
                 <h1 style={styles.title}>Grist 數據動態選擇查看器</h1>
