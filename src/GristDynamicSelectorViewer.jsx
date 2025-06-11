@@ -189,7 +189,7 @@ function GristDynamicSelectorViewer() {
 
       if (autoFetchedSuccess && gristLoginPopupRef) {
         try {
-            // gristLoginPopupRef.close();
+            gristLoginPopupRef.current.close();
             localStorage.removeItem('gristLoginPopupOpen');
             console.log("GristDynamicSelectorViewer: Attempted to close Grist login popup.");
         } catch (e) {
