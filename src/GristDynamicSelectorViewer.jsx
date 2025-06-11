@@ -445,7 +445,7 @@ function GristDynamicSelectorViewer() {
 
     // 開啟登入視窗
     const loginUrl = `${GRIST_API_BASE_URL}/login`;
-    const popup = window.open(loginUrl, 'GristLoginPopup', 'width=600,height=700,scrollbars=yes,resizable=yes,noreferrer');
+    const popup = window.open(loginUrl, 'GristLoginPopup', 'width=600,height=700,scrollbars=yes,resizable=yes');
     console.log('創建:',popup)
     localStorage.setItem('gristLoginPopupOpen', 'true');
     setStatusMessage('請在新視窗中完成 Grist 登入。登入成功後本頁面將會自動反應。');
