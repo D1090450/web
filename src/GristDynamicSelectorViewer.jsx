@@ -14,12 +14,11 @@ const theme = {
   fontSizeBase: '16px', fontSizeSmall: '14px', lineHeightBase: '1.6', borderRadius: '4px',
 };
 
-// --- 自定義 Hook: 修正了無限循環問題 ---
+// --- 自定義 Hook: 穩定且能處理授權錯誤 ---
 const useGristApi = (apiKey, onAuthError) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // 【修正】使用 useRef 來持有回調，避免其成為 request 的依賴
   const onAuthErrorRef = useRef(onAuthError);
   useEffect(() => {
     onAuthErrorRef.current = onAuthError;
@@ -56,7 +55,6 @@ const useGristApi = (apiKey, onAuthError) => {
       if (!response.ok) {
         const errorMsg = responseData?.error?.message || responseData?.error || `請求失敗 (HTTP ${response.status})`;
         if ((response.status === 401 || response.status === 403) && onAuthErrorRef.current) {
-          // 【修正】通過 ref.current 調用回調
           onAuthErrorRef.current();
         }
         throw new Error(errorMsg);
@@ -68,7 +66,6 @@ const useGristApi = (apiKey, onAuthError) => {
     } finally {
       setIsLoading(false);
     }
-  // 【修正】從依賴數組中移除 onAuthError，打破循環
   }, [apiKey]);
 
   return { request, isLoading, error };
@@ -213,10 +210,20 @@ function GristDynamicSelectorViewer() {
         if (!determinedOrg?.id) throw new Error('未能確定目標組織。');
         
         const workspaces = await apiRequest(`/api/orgs/${determinedOrg.id}/workspaces`);
+        
+        // 【修正】恢復使用原始的、穩健的 forEach 嵌套循環邏輯
+        const allDocs = [];
         const docNameCounts = {};
-        const allDocs = workspaces.flatMap(ws => ws.docs || []).map(doc => {
-            docNameCounts[doc.name] = (docNameCounts[doc.name] || 0) + 1;
-            return { ...doc, workspaceName: ws.name };
+        workspaces.forEach(workspace => {
+            if (workspace.docs && Array.isArray(workspace.docs)) {
+                workspace.docs.forEach(doc => {
+                    docNameCounts[doc.name] = (docNameCounts[doc.name] || 0) + 1;
+                    allDocs.push({
+                        ...doc,
+                        workspaceName: workspace.name,
+                    });
+                });
+            }
         });
 
         const processedDocs = allDocs.map(doc => ({
@@ -272,7 +279,7 @@ function GristDynamicSelectorViewer() {
     if (sortQuery.trim()) params.sort = sortQuery.trim();
 
     try {
-      const data = await apiRequest(`/api/docs/${selectedDocId}/tables/${selectedTableId}/records`, 'GET', params);
+      const data = await apiRequest(`/api/docs/${selectedTableId}/tables/${selectedTableId}/records`, 'GET', params);
       if (data?.records) {
         setTableData(data.records);
         if (data.records.length > 0) {
