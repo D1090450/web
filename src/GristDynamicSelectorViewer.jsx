@@ -476,6 +476,7 @@ function GristDynamicSelectorViewer() {
       // 檢查二：如果彈窗開啟，嘗試獲取 API Key
       console.log("GristDynamicSelectorViewer: Polling for API Key while popup is open...");
       if (popup) {
+        console.log("獲取中...");
         try {
           const success = await apiKeyManagerRef.current.triggerFetchKeyFromProfile();
           if (success) {
