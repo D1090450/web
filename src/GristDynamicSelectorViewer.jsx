@@ -483,7 +483,7 @@ function GristDynamicSelectorViewer() {
             // 成功獲取！
             console.log("GristDynamicSelectorViewer: API Key poll successful. Stopping poll.");
             clearInterval(checkLoginInterval); // 停止輪詢
-            popup.close();
+            // popup.close();
           } else {
              // 尚未成功，等待下一次輪詢
              console.log("GristDynamicSelectorViewer: API Key poll failed, will try again in 2 seconds.");
