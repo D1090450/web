@@ -443,57 +443,73 @@ function GristDynamicSelectorViewer() {
       return;
     }
 
-    // 開啟登入視窗
-    const loginUrl = `${GRIST_API_BASE_URL}/login`;
-    const popup = window.open(loginUrl, 'GristLoginPopup', 'width=600,height=700,scrollbars=yes,resizable=yes,noreferrer');
-    console.log('創建:',popup)
-    localStorage.setItem('gristLoginPopupOpen', 'true');
-    setStatusMessage('請在新視窗中完成 Grist 登入。登入成功後本頁面將會自動反應。');
+    // ★★★ 核心修改點：先開窗，後導航 ★★★
+
+    // 1. 同步開啟一個空白視窗，確保能獲取到有效的 window 物件
+    const popup = window.open('about:blank', 'GristLoginPopup', 'width=600,height=700,scrollbars=yes,resizable=yes,noreferrer');
     
-    // 觸發 API Key 管理器的重試邏輯（雖然我們下面的定時器會接管，但這確保了狀態一致）
-    setInitialApiKeyAttemptFailed(true);
-    
-    // 停止 GristApiKeyManager 內部的自動重試定時器，因為我們將使用下面的新定時器來控制
-    if (apiKeyManagerRef) {
-        apiKeyManagerRef.current.stopRetrying();
+    // 如果連空白視窗都被攔截，提示用戶並終止
+    if (!popup) {
+      setStatusMessage('彈出式視窗被您的瀏覽器封鎖了。請允許本站的彈出式視窗後重試。');
+      return;
     }
 
-    // 創建一個新的定時器，每 2 秒輪詢一次登入狀態
-    const checkLoginInterval = setInterval(async () => {
+    // 立刻將有效的視窗物件存入 ref
+    gristLoginPopupRef.current = popup;
+    
+    // 2. 導航到真正的登入頁面
+    const loginUrl = `${GRIST_API_BASE_URL}/login`;
+    popup.location.href = loginUrl;
+    popup.focus(); // 確保視窗在最前
+
+    console.log('創建:', popup); // ✅ 現在這裡應該總是有一個有效的 Window 物件
+
+    // --- 後續邏輯優化 ---
+
+    localStorage.setItem('gristLoginPopupOpen', 'true');
+    setStatusMessage('請在新視窗中完成 Grist 登入...');
+    setInitialApiKeyAttemptFailed(true);
+    
+    if (apiKeyManagerRef.current) {
+      apiKeyManagerRef.current.stopRetrying();
+    }
+
+    // 清除可能存在的舊定時器，避免重複執行
+    if (checkIntervalRef.current) {
+      clearInterval(checkIntervalRef.current);
+    }
+
+    // 創建新的定時器，並將其 ID 存入 ref
+    checkIntervalRef.current = setInterval(async () => {
       // 檢查一：用戶是否手動關閉了彈窗
-      if (!gristLoginPopupRef) {
-        clearInterval(checkLoginInterval); // 停止輪詢
+      if (gristLoginPopupRef.current && gristLoginPopupRef.current.closed) {
+        clearInterval(checkIntervalRef.current);
         localStorage.removeItem('gristLoginPopupOpen');
-        gristLoginPopupRef.current = null;
-        
-        // 只有在最終仍未獲取到 apiKey 的情況下，才更新狀態提示
         if (!apiKey) {
-          setStatusMessage('Grist 登入視窗已關閉。如果尚未登入，請點擊按鈕重試。');
+          setStatusMessage('登入視窗已關閉。如果尚未登入，請重試。');
         }
-        return; // 結束本次定時器回調
+        return;
       }
 
-      // 檢查二：如果彈窗開啟，嘗試獲取 API Key
-      console.log("GristDynamicSelectorViewer: Polling for API Key while popup is open...");
-      if (apiKeyManagerRef) {
-        try {
-          const success = await apiKeyManagerRef.current.triggerFetchKeyFromProfile();
-          if (success) {
-            // 成功獲取！
-            console.log("GristDynamicSelectorViewer: API Key poll successful. Stopping poll.");
-            clearInterval(checkLoginInterval); // 停止輪詢
-          } else {
-             // 尚未成功，等待下一次輪詢
-             console.log("GristDynamicSelectorViewer: API Key poll failed, will try again in 2 seconds.");
+      // 檢查二：輪詢 API Key
+      try {
+        const success = await apiKeyManagerRef.current?.triggerFetchKeyFromProfile();
+        if (success) {
+          console.log("成功獲取 API Key，停止輪詢。");
+          clearInterval(checkIntervalRef.current);
+          setStatusMessage('登入成功！');
+          localStorage.removeItem('gristLoginPopupOpen');
+          // 登入成功後，最好幫用戶自動關閉登入視窗
+          if (gristLoginPopupRef.current && !gristLoginPopupRef.current.closed) {
+            gristLoginPopupRef.current.close();
           }
-        } catch (error) {
-            console.error("GristDynamicSelectorViewer: Error during polling for API Key:", error);
-            // 即使出錯也繼續輪詢，可能是暫時的網絡問題
         }
+      } catch (error) {
+        console.error("輪詢 API Key 時發生錯誤:", error);
       }
-    }, 2000); // 每 2000 毫秒 (2秒) 嘗試一次
+    }, 2000);
 
-  }, [apiKey, setStatusMessage, setInitialApiKeyAttemptFailed]);
+  }, [apiKey, setStatusMessage, setInitialApiKeyAttemptFailed, GRIST_API_BASE_URL, apiKeyManagerRef]);
 
   // 初始加載時，如果 localStorage 和 state 中都沒有 key，則設置 initialApiKeyAttemptFailed
   useEffect(() => {
