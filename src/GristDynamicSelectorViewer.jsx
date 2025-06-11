@@ -14,10 +14,16 @@ const theme = {
   fontSizeBase: '16px', fontSizeSmall: '14px', lineHeightBase: '1.6', borderRadius: '4px',
 };
 
-// --- 自定義 Hook: 封裝 Grist API 請求邏輯 ---
+// --- 自定義 Hook: 修正了無限循環問題 ---
 const useGristApi = (apiKey, onAuthError) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // 【修正】使用 useRef 來持有回調，避免其成為 request 的依賴
+  const onAuthErrorRef = useRef(onAuthError);
+  useEffect(() => {
+    onAuthErrorRef.current = onAuthError;
+  }, [onAuthError]);
 
   const request = useCallback(async (endpoint, method = 'GET', params = null, body = null) => {
     if (!apiKey) {
@@ -28,18 +34,11 @@ const useGristApi = (apiKey, onAuthError) => {
 
     setIsLoading(true);
     setError(null);
-
+    
     let url = `${GRIST_API_BASE_URL}${endpoint}`;
     if (params) {
-      const queryParams = new URLSearchParams();
-      for (const key in params) {
-        if (params[key] !== undefined && params[key] !== null && params[key] !== '') {
-          queryParams.append(key, params[key]);
-        }
-      }
-      if (queryParams.toString()) {
-        url += `?${queryParams.toString()}`;
-      }
+        const queryParams = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== null && value !== undefined && value !== ''));
+        if (queryParams.toString()) url += `?${queryParams.toString()}`;
     }
 
     try {
@@ -55,9 +54,10 @@ const useGristApi = (apiKey, onAuthError) => {
       });
 
       if (!response.ok) {
-        const errorMsg = responseData?.error?.message || responseData?.error || `請求失敗 (HTTP ${response.status})`
-        if (response.status === 401 || response.status === 403) {
-          onAuthError();
+        const errorMsg = responseData?.error?.message || responseData?.error || `請求失敗 (HTTP ${response.status})`;
+        if ((response.status === 401 || response.status === 403) && onAuthErrorRef.current) {
+          // 【修正】通過 ref.current 調用回調
+          onAuthErrorRef.current();
         }
         throw new Error(errorMsg);
       }
@@ -68,7 +68,8 @@ const useGristApi = (apiKey, onAuthError) => {
     } finally {
       setIsLoading(false);
     }
-  }, [apiKey, onAuthError]);
+  // 【修正】從依賴數組中移除 onAuthError，打破循環
+  }, [apiKey]);
 
   return { request, isLoading, error };
 };
@@ -124,14 +125,15 @@ const GristApiKeyManager = React.forwardRef(({ apiKey: apiKeyProp, onApiKeyUpdat
       <input
         type="password" value={localApiKey} onChange={(e) => setLocalApiKey(e.target.value)}
         placeholder="在此輸入或貼上 Grist API Key"
-        style={{ width: 'calc(100% - 160px)', marginRight: '10px', padding: '10px', fontSize: theme.fontSizeBase }}
+        style={{ width: 'calc(100% - 160px)', marginRight: '10px', padding: '10px', fontSize: theme.fontSizeBase, border: `1px solid ${theme.borderColor}`, borderRadius: theme.borderRadius }}
       />
-      <button onClick={handleManualSubmit} style={{ padding: '10px 15px', fontSize: theme.fontSizeBase, cursor: 'pointer' }}>
+      <button onClick={handleManualSubmit} style={{ padding: '10px 15px', fontSize: theme.fontSizeBase, backgroundColor: '#e9ecef', color: theme.textColor, border: `1px solid ${theme.borderColor}`, cursor: 'pointer' }}>
         設定手動 Key
       </button>
     </div>
   );
 });
+
 
 // --- 主應用組件 ---
 function GristDynamicSelectorViewer() {
@@ -164,14 +166,13 @@ function GristDynamicSelectorViewer() {
 
   const handleApiKeyUpdate = useCallback((key, autoFetched = false) => {
     setApiKey(key);
-    clearSubsequentState();
     if (key) {
       localStorage.setItem('gristApiKey', key);
       setInitialApiKeyAttemptFailed(false);
       setStatusMessage(autoFetched ? 'API Key 自動獲取成功！' : 'API Key 已設定。');
     } else {
       localStorage.removeItem('gristApiKey');
-      // Don't set to true here immediately, let effects or user actions decide
+      clearSubsequentState();
     }
   }, [clearSubsequentState]);
 
@@ -189,25 +190,23 @@ function GristDynamicSelectorViewer() {
     if (!localStorage.getItem('gristApiKey') && !apiKey) {
       setInitialApiKeyAttemptFailed(true);
     }
-    // Cleanup polling timer on component unmount
     return () => clearTimeout(pollingTimerRef.current);
-  }, []);
+  }, [apiKey]);
 
   useEffect(() => {
     if (!apiKey) {
         clearSubsequentState();
         return;
-    };
+    }
     const getOrgAndDocs = async () => {
       setStatusMessage('正在獲取組織與文檔資訊...');
       try {
         const orgsData = await apiRequest('/api/orgs');
         let determinedOrg = null;
 
-        // 【修正】恢復對 /api/orgs 兩種返回格式的處理
         if (Array.isArray(orgsData) && orgsData.length > 0) {
             determinedOrg = orgsData.find(org => org.domain === TARGET_ORG_DOMAIN) || orgsData[0];
-        } else if (orgsData && orgsData.id) { // Handle case where a single org object is returned
+        } else if (orgsData && orgsData.id) {
             determinedOrg = orgsData;
         }
 
@@ -228,19 +227,21 @@ function GristDynamicSelectorViewer() {
         setDocuments(processedDocs);
         setStatusMessage(processedDocs.length > 0 ? '文檔列表加載成功。' : '此組織下沒有找到任何文檔。');
       } catch (error) {
-        setStatusMessage(`獲取組織或文檔失敗: ${error.message}`);
         setDocuments([]);
+        setStatusMessage(`獲取組織或文檔失敗: ${error.message}`);
       }
     };
     getOrgAndDocs();
-  }, [apiKey, apiRequest]);
+  }, [apiKey, apiRequest, clearSubsequentState]);
   
   useEffect(() => {
-    if (!selectedDocId) return;
+    if (!selectedDocId) {
+        setTables([]);
+        setSelectedTableId('');
+        setTableData(null);
+        return;
+    }
     const fetchTables = async () => {
-      setTables([]);
-      setSelectedTableId('');
-      setTableData(null);
       setStatusMessage('正在獲取表格列表...');
       try {
         const data = await apiRequest(`/api/docs/${selectedDocId}/tables`);
@@ -248,6 +249,7 @@ function GristDynamicSelectorViewer() {
         setTables(tableList);
         setStatusMessage(tableList.length > 0 ? '表格列表加載成功。' : '此文檔中未找到表格。');
       } catch (error) {
+        setTables([]);
         setStatusMessage(`獲取表格列表失敗: ${error.message}`);
       }
     };
@@ -278,6 +280,7 @@ function GristDynamicSelectorViewer() {
           setColumns(Array.from(allCols));
           setStatusMessage(`成功獲取 ${data.records.length} 條數據。`);
         } else {
+          setColumns([]);
           setStatusMessage('數據獲取成功，但結果為空。');
         }
       } else { throw new Error('返回的數據格式不正確。'); }
@@ -287,14 +290,13 @@ function GristDynamicSelectorViewer() {
   }, [selectedDocId, selectedTableId, filterQuery, sortQuery, apiRequest]);
 
   const openGristLoginPopup = useCallback(() => {
-    clearTimeout(pollingTimerRef.current); // Clear any previous timer
+    clearTimeout(pollingTimerRef.current);
     const loginUrl = `${GRIST_API_BASE_URL}/login`;
     const popup = window.open(loginUrl, 'GristLoginPopup', 'width=600,height=700');
     if (!popup) { setStatusMessage("彈出視窗被瀏覽器阻擋，請允許後重試。"); return; }
     
     setStatusMessage('請在新視窗中完成 Grist 登入...');
 
-    // 【修正】使用遞歸 setTimeout 進行輪詢
     const pollForApiKey = async () => {
       if (popup.closed) {
         clearTimeout(pollingTimerRef.current);
@@ -307,19 +309,18 @@ function GristDynamicSelectorViewer() {
         clearTimeout(pollingTimerRef.current);
         popup.close();
       } else {
-        // Schedule the next poll after a delay
-        pollingTimerRef.current = setTimeout(pollForApiKey, 2500); // 2.5秒延遲
+        pollingTimerRef.current = setTimeout(pollForApiKey, 2500);
       }
     };
     
-    pollingTimerRef.current = setTimeout(pollForApiKey, 1000); // 首次嘗試前稍作延遲
+    pollingTimerRef.current = setTimeout(pollForApiKey, 1000);
 
   }, [apiKey]);
 
   const hasErrorStatus = statusMessage.includes('失敗') || statusMessage.includes('錯誤') || statusMessage.includes('失效') || dataError;
 
   return (
-    <div style={{ padding: '25px', fontFamily: theme.fontFamily, color: theme.textColor, maxWidth: '1000px', margin: '20px auto', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
+    <div style={{ padding: '25px', fontFamily: theme.fontFamily, color: theme.textColor, maxWidth: '1000px', margin: '20px auto', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', borderRadius: '8px' }}>
       <h1 style={{ textAlign: 'center' }}>Grist 數據動態選擇查看器</h1>
       <p style={{ textAlign: 'center', color: theme.textColorSubtle, fontSize: theme.fontSizeSmall, marginBottom: '25px' }}>
         API 目標: <code>{GRIST_API_BASE_URL}</code>
@@ -342,7 +343,7 @@ function GristDynamicSelectorViewer() {
       {initialApiKeyAttemptFailed && !apiKey && (
         <div style={{ padding: '20px', margin: '20px 0', border: `1px solid ${theme.errorColor}`, borderRadius: theme.borderRadius, textAlign: 'center', backgroundColor: theme.errorColorBg }}>
           <p style={{ color: theme.errorColor, margin: '0 0 15px 0', fontWeight: '500' }}>需要 API Key 才能繼續。</p>
-          <button onClick={openGristLoginPopup} style={{ padding: '10px 15px', marginRight: '10px', backgroundColor: theme.primaryColor, color: theme.primaryColorText, border: 'none', cursor: 'pointer' }}>
+          <button onClick={openGristLoginPopup} style={{ padding: '10px 15px', marginRight: '10px', fontSize: theme.fontSizeBase, backgroundColor: theme.primaryColor, color: theme.primaryColorText, border: 'none', cursor: 'pointer' }}>
             開啟 Grist 登入視窗
           </button>
           <button onClick={() => apiKeyManagerRef.current?.triggerFetchKeyFromProfile()} style={{ padding: '10px 15px', backgroundColor: '#6c757d', color: theme.primaryColorText, border: 'none', cursor: 'pointer' }}>
@@ -356,8 +357,8 @@ function GristDynamicSelectorViewer() {
           <h3 style={{ marginTop: '0', marginBottom: '20px', borderBottom: `1px solid ${theme.borderColor}`, paddingBottom: '10px' }}>選擇數據源</h3>
           
           <div style={{ marginBottom: '15px' }}>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>選擇文檔:</label>
-            <select value={selectedDocId} onChange={(e) => setSelectedDocId(e.target.value)} disabled={isApiLoading || documents.length === 0} style={{ width: '100%', padding: '10px' }}>
+            <label htmlFor="docSelect" style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>選擇文檔:</label>
+            <select id="docSelect" value={selectedDocId} onChange={(e) => { setSelectedDocId(e.target.value); setSelectedTableId(''); setTableData(null); }} disabled={isApiLoading || documents.length === 0} style={{ width: '100%', padding: '10px', fontSize: theme.fontSizeBase }}>
               <option value="">{isApiLoading && !documents.length ? '加載中...' : (documents.length === 0 ? '無可用文檔' : '-- 請選擇 --')}</option>
               {documents.map((doc) => (<option key={doc.id} value={doc.id}>{doc.displayName}</option>))}
             </select>
@@ -365,8 +366,8 @@ function GristDynamicSelectorViewer() {
 
           {selectedDocId && (
             <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>選擇表格:</label>
-              <select value={selectedTableId} onChange={(e) => setSelectedTableId(e.target.value)} disabled={isApiLoading || tables.length === 0} style={{ width: '100%', padding: '10px' }}>
+              <label htmlFor="tableSelect" style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>選擇表格:</label>
+              <select id="tableSelect" value={selectedTableId} onChange={(e) => { setSelectedTableId(e.target.value); setTableData(null); }} disabled={isApiLoading || tables.length === 0} style={{ width: '100%', padding: '10px', fontSize: theme.fontSizeBase }}>
                 <option value="">{isApiLoading && !tables.length ? '加載中...' : (tables.length === 0 ? '無可用表格' : '-- 請選擇 --')}</option>
                 {tables.map((table) => (<option key={table.id} value={table.id}>{table.name}</option>))}
               </select>
@@ -378,12 +379,12 @@ function GristDynamicSelectorViewer() {
               <h4 style={{ marginTop: '0' }}>數據獲取選項</h4>
               <input type="text" value={filterQuery} onChange={(e) => setFilterQuery(e.target.value)} placeholder='過濾條件 (JSON格式) e.g., {"Column": "Value"}' style={{ width: '100%', padding: '10px', boxSizing: 'border-box', marginBottom: '10px' }}/>
               <input type="text" value={sortQuery} onChange={(e) => setSortQuery(e.target.value)} placeholder='排序條件 e.g., Column, -AnotherColumn' style={{ width: '100%', padding: '10px', boxSizing: 'border-box', marginBottom: '20px' }}/>
-              <button onClick={handleFetchTableData} disabled={isApiLoading} style={{ width: '100%', padding: '12px 20px', backgroundColor: isApiLoading ? '#6c757d' : theme.primaryColor, color: theme.primaryColorText, border: 'none', cursor: 'pointer' }}>
+              <button onClick={handleFetchTableData} disabled={isApiLoading} style={{ width: '100%', padding: '12px 20px', backgroundColor: isApiLoading ? '#6c757d' : theme.primaryColor, color: theme.primaryColorText, border: 'none', cursor: 'pointer', fontSize: '16px' }}>
                 {isApiLoading ? '加載中...' : `獲取 "${selectedTableId}" 的數據`}
               </button>
             </div>
           )}
-          {dataError && <p style={{ color: theme.errorColor, marginTop: '15px', backgroundColor: theme.errorColorBg, padding: '10px' }}>錯誤: {dataError}</p>}
+          {dataError && <p style={{ color: theme.errorColor, marginTop: '15px', backgroundColor: theme.errorColorBg, padding: '12px', borderRadius: theme.borderRadius }}>錯誤: {dataError}</p>}
         </div>
       )}
 
@@ -391,10 +392,10 @@ function GristDynamicSelectorViewer() {
         <div style={{ marginTop: '30px', overflowX: 'auto' }}>
           <h3>數據結果 (前 {tableData.length} 條)</h3>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead >
+            <thead>
               <tr style={{backgroundColor: '#e9ecef'}}>
-                <th style={{ padding: '12px 10px', textAlign: 'left' }}>id</th>
-                {columns.map((col) => (<th key={col} style={{ padding: '12px 10px', textAlign: 'left' }}>{col}</th>))}
+                <th style={{ padding: '12px 10px', textAlign: 'left', borderBottom: `2px solid ${theme.borderColor}` }}>id</th>
+                {columns.map((col) => (<th key={col} style={{ padding: '12px 10px', textAlign: 'left', borderBottom: `2px solid ${theme.borderColor}` }}>{col}</th>))}
               </tr>
             </thead>
             <tbody>
@@ -414,7 +415,7 @@ function GristDynamicSelectorViewer() {
           </table>
         </div>
       )}
-      {apiKey && tableData?.length === 0 && !isApiLoading && !dataError && <p style={{textAlign: 'center', marginTop: '15px'}}>查詢結果為空。</p>}
+      {apiKey && tableData?.length === 0 && !isApiLoading && !dataError && <p style={{textAlign: 'center', marginTop: '15px', padding: '12px', backgroundColor: '#fff3cd', border: '1px solid #ffeeba', color: '#856404', borderRadius: theme.borderRadius }}>查詢結果為空。</p>}
     </div>
   );
 }
