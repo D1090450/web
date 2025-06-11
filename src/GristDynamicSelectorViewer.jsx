@@ -446,8 +446,8 @@ function GristDynamicSelectorViewer() {
     // ★★★ 核心修改點：先開窗，後導航 ★★★
 
     // 1. 同步開啟一個空白視窗，確保能獲取到有效的 window 物件
-    const popup = window.open('about:blank', 'GristLoginPopup', 'width=600,height=700,scrollbars=yes,resizable=yes,noreferrer');
-    
+    const popup = window.open('about:blank', 'GristLoginPopup', 'width=600,height=700,scrollbars=yes,resizable=yes');
+    console.log(popup)
     // 如果連空白視窗都被攔截，提示用戶並終止
     if (!popup) {
       setStatusMessage('彈出式視窗被您的瀏覽器封鎖了。請允許本站的彈出式視窗後重試。');
