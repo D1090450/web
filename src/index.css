@@ -1,68 +1,37 @@
-:root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+/* src/index.css */
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
+/* 
+ * 1. 全局重置，移除瀏覽器預設的邊距和內邊距
+ * 這能確保我們的佈局從一個乾淨的狀態開始。
+ */
+body, html {
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased; /* 讓字體在 macOS 和 iOS 上更平滑 */
   -moz-osx-font-smoothing: grayscale;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
-body {
-  margin: 0;
+/* 
+ * 2. 設置 React 應用程式的根容器 (#root)
+ * 這是實現置中的核心。
+ */
+#root {
+  /* 使用 Flexbox 進行佈局 */
   display: flex;
-  place-items: center;
-  min-width: 320px;
+  
+  /* 垂直方向：將內容（我們的白色面板）在容器中置中 */
+  align-items: center; 
+  
+  /* 水平方向：將內容在容器中置中 */
+  justify-content: center;
+  
+  /* 確保容器至少和視窗一樣高，這是垂直置中的關鍵 */
   min-height: 100vh;
-}
+  
+  /* 設置頁面背景色（灰色）*/
+  background-color: #f0f2f5;
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
-
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+  /* 在容器四周留出一些空間，避免組件在小螢幕上貼邊 */
+  padding: 40px 20px;
+  box-sizing: border-box; /* 確保 padding 不會增加容器的總寬度 */
 }

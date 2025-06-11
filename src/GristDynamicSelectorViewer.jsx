@@ -6,19 +6,9 @@ const TARGET_ORG_DOMAIN = 'fcuai.tw';
 
 // --- 樣式對象 ---
 const styles = {
-  // 這個 AppWrapper 是最外層的容器，負責灰色背景和置中
-  appWrapper: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-    minHeight: '100vh',
-    backgroundColor: '#f0f2f5',
-    padding: '60px 20px',
-    boxSizing: 'border-box',
-    fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',
-  },
-  // 這個 Container 是白色的主面板
+  // 白色的主面板
   container: {
+    fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',
     color: '#333740',
     backgroundColor: '#ffffff',
     maxWidth: '1000px',
@@ -26,6 +16,7 @@ const styles = {
     padding: '40px',
     borderRadius: '8px',
     boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+    margin: '0 20px', // 在小螢幕上提供左右邊距
   },
   header: { textAlign: 'center', marginBottom: '30px' },
   title: { fontSize: '28px', fontWeight: '600', color: '#333740', marginBottom: '10px' },
@@ -63,7 +54,6 @@ const styles = {
 
 // --- 自定義 Hook (無修改) ---
 const useGristApi = (apiKey, onAuthError) => {
-    // ... (內部邏輯保持不變)
     const [isLoading, setIsLoading] = useState(false);
     const onAuthErrorRef = useRef(onAuthError);
     useEffect(() => { onAuthErrorRef.current = onAuthError; }, [onAuthError]);
@@ -76,10 +66,7 @@ const useGristApi = (apiKey, onAuthError) => {
           if (queryParams.toString()) url += `?${queryParams.toString()}`;
       }
       try {
-        const response = await fetch(url, {
-          method,
-          headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' }
-        });
+        const response = await fetch(url, { method, headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' } });
         const responseData = await response.json().catch(() => { throw new Error('非 JSON 響應'); });
         if (!response.ok) {
           const errorMsg = responseData?.error?.message || `請求失敗 (HTTP ${response.status})`;
@@ -95,7 +82,6 @@ const useGristApi = (apiKey, onAuthError) => {
 
 // --- API Key 管理組件 (無修改) ---
 const GristApiKeyManager = React.forwardRef(({ apiKey, onApiKeyUpdate, onStatusUpdate, initialAttemptFailed }, ref) => {
-    // ... (內部邏輯保持不變)
     const [localApiKey, setLocalApiKey] = useState(apiKey || '');
     useEffect(() => { setLocalApiKey(apiKey || ''); }, [apiKey]);
     const fetchKeyFromProfile = useCallback(async () => {
@@ -253,96 +239,95 @@ function GristDynamicSelectorViewer() {
     const hasErrorStatus = statusMessage.includes('失敗') || statusMessage.includes('錯誤') || statusMessage.includes('失效') || dataError;
   
     return (
-        <div style={styles.appWrapper}>
-            <div style={styles.container}>
-                <div style={styles.header}>
-                    <h1 style={styles.title}>Grist 數據動態選擇查看器</h1>
-                    <p style={styles.subtitle}>API 目標: <code>{GRIST_API_BASE_URL}</code></p>
-                </div>
-
-                {statusMessage && (
-                <p style={styles.statusMessage(hasErrorStatus)}>
-                    {hasErrorStatus ? '⚠️ ' : '✅ '}
-                    {isApiLoading && !statusMessage.includes('成功') ? '處理中... ' : ''}{statusMessage}
-                </p>
-                )}
-
-                <GristApiKeyManager
-                    ref={apiKeyManagerRef} apiKey={apiKey} onApiKeyUpdate={handleApiKeyUpdate}
-                    onStatusUpdate={setStatusMessage} initialAttemptFailed={initialApiKeyAttemptFailed}
-                />
-
-                {initialApiKeyAttemptFailed && !apiKey && (
-                <div style={{ ...styles.card, textAlign: 'center', backgroundColor: '#fdecea', borderColor: '#dc3545' }}>
-                    <p style={{ margin: '0 0 15px 0', fontWeight: '500', color: '#dc3545' }}>需要 API Key 才能繼續操作。</p>
-                    <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-                        <button onClick={openGristLoginPopup} style={{...styles.buttonBase, ...styles.buttonPrimary}}>開啟登入視窗</button>
-                        <button onClick={() => apiKeyManagerRef.current?.triggerFetchKeyFromProfile()} style={{...styles.buttonBase, ...styles.buttonSecondary}}>重試自動獲取</button>
-                    </div>
-                </div>
-                )}
-
-                {apiKey && (
-                <div style={styles.card}>
-                    <h3 style={{ marginTop: '0', marginBottom: '20px', borderBottom: '1px solid #dee2e6', paddingBottom: '10px' }}>選擇數據源</h3>
-                    <div style={{ marginBottom: '20px' }}>
-                        <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>選擇文檔:</label>
-                        <select value={selectedDocId} onChange={(e) => { setSelectedDocId(e.target.value); setSelectedTableId(''); setTableData(null); }} disabled={isApiLoading || documents.length === 0} style={styles.inputBase}>
-                            <option value="">{isApiLoading && !documents.length ? '加載中...' : (documents.length === 0 ? '無可用文檔' : '-- 請選擇 --')}</option>
-                            {documents.map((doc) => (<option key={doc.id} value={doc.id}>{doc.displayName}</option>))}
-                        </select>
-                    </div>
-
-                    {selectedDocId && (
-                    <div style={{ marginBottom: '20px' }}>
-                        <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>選擇表格:</label>
-                        <select value={selectedTableId} onChange={(e) => { setSelectedTableId(e.target.value); setTableData(null); }} disabled={isApiLoading || tables.length === 0} style={styles.inputBase}>
-                            <option value="">{isApiLoading && !tables.length ? '加載中...' : (tables.length === 0 ? '無可用表格' : '-- 請選擇 --')}</option>
-                            {tables.map((table) => (<option key={table.id} value={table.id}>{table.name}</option>))}
-                        </select>
-                    </div>
-                    )}
-
-                    {selectedTableId && (
-                    <div style={{ ...styles.card, backgroundColor: '#ffffff', padding: '20px', marginTop: '10px' }}>
-                        <h4 style={{ marginTop: '0', marginBottom: '15px' }}>數據獲取選項</h4>
-                        <input type="text" value={filterQuery} onChange={(e) => setFilterQuery(e.target.value)} placeholder='過濾條件 (JSON) e.g., {"Column": "Value"}' style={{...styles.inputBase, marginBottom: '10px'}}/>
-                        <input type="text" value={sortQuery} onChange={(e) => setSortQuery(e.target.value)} placeholder='排序條件 e.g., Column, -AnotherColumn' style={{...styles.inputBase, marginBottom: '20px'}}/>
-                        <button onClick={handleFetchTableData} disabled={isApiLoading} style={{...styles.buttonBase, ...styles.buttonPrimary, width: '100%', ...(isApiLoading && styles.buttonDisabled)}}>
-                            {isApiLoading ? '加載中...' : `獲取 "${selectedTableId}" 的數據`}
-                        </button>
-                    </div>
-                    )}
-                    {dataError && <p style={{...styles.statusMessage(true), marginTop: '15px' }}>⚠️ 錯誤: {dataError}</p>}
-                </div>
-                )}
-
-                {tableData && tableData.length > 0 && (
-                <div style={styles.tableContainer}>
-                    <table style={styles.table}>
-                        <thead>
-                            <tr>
-                                <th style={{ ...styles.th, position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#e9ecef' }}>id</th>
-                                {columns.map((col) => (<th key={col} style={styles.th}>{col}</th>))}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {tableData.map((record, index) => (
-                            <tr key={record.id} style={{ backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8f9fa' }}>
-                                <td style={{ ...styles.td, position: 'sticky', left: 0, zIndex: 1, backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8f9fa', borderRight: '1px solid #dee2e6' }}>{record.id}</td>
-                                {columns.map((col) => (
-                                <td key={`${record.id}-${col}`} style={styles.td}>
-                                    {record.fields?.[col] != null ? String(record.fields[col]) : ''}
-                                </td>
-                                ))}
-                            </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-                )}
-                {apiKey && tableData?.length === 0 && !isApiLoading && !dataError && <p style={{textAlign: 'center', ...styles.card, marginTop: '20px'}}>查詢結果為空。</p>}
+        // 這就是我們的 "畫"，它只負責自己的內容
+        <div style={styles.container}>
+            <div style={styles.header}>
+                <h1 style={styles.title}>Grist 數據動態選擇查看器</h1>
+                <p style={styles.subtitle}>API 目標: <code>{GRIST_API_BASE_URL}</code></p>
             </div>
+
+            {statusMessage && (
+            <p style={styles.statusMessage(hasErrorStatus)}>
+                {hasErrorStatus ? '⚠️ ' : '✅ '}
+                {isApiLoading && !statusMessage.includes('成功') ? '處理中... ' : ''}{statusMessage}
+            </p>
+            )}
+
+            <GristApiKeyManager
+                ref={apiKeyManagerRef} apiKey={apiKey} onApiKeyUpdate={handleApiKeyUpdate}
+                onStatusUpdate={setStatusMessage} initialAttemptFailed={initialApiKeyAttemptFailed}
+            />
+
+            {initialApiKeyAttemptFailed && !apiKey && (
+            <div style={{ ...styles.card, textAlign: 'center', backgroundColor: '#fdecea', borderColor: '#dc3545' }}>
+                <p style={{ margin: '0 0 15px 0', fontWeight: '500', color: '#dc3545' }}>需要 API Key 才能繼續操作。</p>
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                    <button onClick={openGristLoginPopup} style={{...styles.buttonBase, ...styles.buttonPrimary}}>開啟登入視窗</button>
+                    <button onClick={() => apiKeyManagerRef.current?.triggerFetchKeyFromProfile()} style={{...styles.buttonBase, ...styles.buttonSecondary}}>重試自動獲取</button>
+                </div>
+            </div>
+            )}
+
+            {apiKey && (
+            <div style={styles.card}>
+                <h3 style={{ marginTop: '0', marginBottom: '20px', borderBottom: '1px solid #dee2e6', paddingBottom: '10px' }}>選擇數據源</h3>
+                <div style={{ marginBottom: '20px' }}>
+                    <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>選擇文檔:</label>
+                    <select value={selectedDocId} onChange={(e) => { setSelectedDocId(e.target.value); setSelectedTableId(''); setTableData(null); }} disabled={isApiLoading || documents.length === 0} style={styles.inputBase}>
+                        <option value="">{isApiLoading && !documents.length ? '加載中...' : (documents.length === 0 ? '無可用文檔' : '-- 請選擇 --')}</option>
+                        {documents.map((doc) => (<option key={doc.id} value={doc.id}>{doc.displayName}</option>))}
+                    </select>
+                </div>
+
+                {selectedDocId && (
+                <div style={{ marginBottom: '20px' }}>
+                    <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>選擇表格:</label>
+                    <select value={selectedTableId} onChange={(e) => { setSelectedTableId(e.target.value); setTableData(null); }} disabled={isApiLoading || tables.length === 0} style={styles.inputBase}>
+                        <option value="">{isApiLoading && !tables.length ? '加載中...' : (tables.length === 0 ? '無可用表格' : '-- 請選擇 --')}</option>
+                        {tables.map((table) => (<option key={table.id} value={table.id}>{table.name}</option>))}
+                    </select>
+                </div>
+                )}
+
+                {selectedTableId && (
+                <div style={{ ...styles.card, backgroundColor: '#ffffff', padding: '20px', marginTop: '10px' }}>
+                    <h4 style={{ marginTop: '0', marginBottom: '15px' }}>數據獲取選項</h4>
+                    <input type="text" value={filterQuery} onChange={(e) => setFilterQuery(e.target.value)} placeholder='過濾條件 (JSON) e.g., {"Column": "Value"}' style={{...styles.inputBase, marginBottom: '10px'}}/>
+                    <input type="text" value={sortQuery} onChange={(e) => setSortQuery(e.target.value)} placeholder='排序條件 e.g., Column, -AnotherColumn' style={{...styles.inputBase, marginBottom: '20px'}}/>
+                    <button onClick={handleFetchTableData} disabled={isApiLoading} style={{...styles.buttonBase, ...styles.buttonPrimary, width: '100%', ...(isApiLoading && styles.buttonDisabled)}}>
+                        {isApiLoading ? '加載中...' : `獲取 "${selectedTableId}" 的數據`}
+                    </button>
+                </div>
+                )}
+                {dataError && <p style={{...styles.statusMessage(true), marginTop: '15px' }}>⚠️ 錯誤: {dataError}</p>}
+            </div>
+            )}
+
+            {tableData && tableData.length > 0 && (
+            <div style={styles.tableContainer}>
+                <table style={styles.table}>
+                    <thead>
+                        <tr>
+                            <th style={{ ...styles.th, position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#e9ecef' }}>id</th>
+                            {columns.map((col) => (<th key={col} style={styles.th}>{col}</th>))}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {tableData.map((record, index) => (
+                        <tr key={record.id} style={{ backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8f9fa' }}>
+                            <td style={{ ...styles.td, position: 'sticky', left: 0, zIndex: 1, backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8f9fa', borderRight: '1px solid #dee2e6' }}>{record.id}</td>
+                            {columns.map((col) => (
+                            <td key={`${record.id}-${col}`} style={styles.td}>
+                                {record.fields?.[col] != null ? (typeof record.fields[col] === 'object' ? JSON.stringify(record.fields[col]) : String(record.fields[col])) : ''}
+                            </td>
+                            ))}
+                        </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+            )}
+            {apiKey && tableData?.length === 0 && !isApiLoading && !dataError && <p style={{textAlign: 'center', ...styles.card, marginTop: '20px'}}>查詢結果為空。</p>}
         </div>
     );
 }
