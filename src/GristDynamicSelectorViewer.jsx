@@ -92,7 +92,7 @@ const GristApiKeyManager = React.forwardRef(({ apiKey, onApiKeyUpdate, onStatusU
         if (!response.ok || !fetchedKey || fetchedKey.includes('<') || fetchedKey.length < 32) throw new Error('獲取 API Key 無效');
         onApiKeyUpdate(fetchedKey.trim(), true);
         return true;
-      } catch (error) { console.log(`自動獲取失敗: ${error.message}`); return false; }
+      } catch (error) { onStatusUpdate(`自動獲取失敗 請先登入`); return false; }
     }, [onApiKeyUpdate, onStatusUpdate]);
     useEffect(() => { if (initialAttemptFailed && !apiKey) fetchKeyFromProfile(); }, [initialAttemptFailed, apiKey, fetchKeyFromProfile]);
     React.useImperativeHandle(ref, () => ({ triggerFetchKeyFromProfile: fetchKeyFromProfile }));
