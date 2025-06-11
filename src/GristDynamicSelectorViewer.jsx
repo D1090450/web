@@ -211,17 +211,13 @@ function GristDynamicSelectorViewer() {
         
         const workspaces = await apiRequest(`/api/orgs/${determinedOrg.id}/workspaces`);
         
-        // 【修正】恢復使用原始的、穩健的 forEach 嵌套循環邏輯
         const allDocs = [];
         const docNameCounts = {};
         workspaces.forEach(workspace => {
             if (workspace.docs && Array.isArray(workspace.docs)) {
                 workspace.docs.forEach(doc => {
                     docNameCounts[doc.name] = (docNameCounts[doc.name] || 0) + 1;
-                    allDocs.push({
-                        ...doc,
-                        workspaceName: workspace.name,
-                    });
+                    allDocs.push({ ...doc, workspaceName: workspace.name });
                 });
             }
         });
@@ -279,7 +275,9 @@ function GristDynamicSelectorViewer() {
     if (sortQuery.trim()) params.sort = sortQuery.trim();
 
     try {
-      const data = await apiRequest(`/api/docs/${selectedTableId}/tables/${selectedTableId}/records`, 'GET', params);
+      // 【修正】這裡使用了正確的 selectedDocId，而不是錯誤的 selectedTableId
+      const data = await apiRequest(`/api/docs/${selectedDocId}/tables/${selectedTableId}/records`, 'GET', params);
+      
       if (data?.records) {
         setTableData(data.records);
         if (data.records.length > 0) {
