@@ -1,4 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
+// 導入新的自定義 Hook
+import { login } from './login'; // <-- 請確保路徑正確
 
 // --- 常量配置 ---
 const GRIST_API_BASE_URL = 'https://tiss-grist.fcuai.tw';
@@ -52,7 +54,7 @@ const styles = {
 };
 
 
-// --- 自定義 Hook (無修改) ---
+// --- 自定義 Hook (useGristApi) ---
 const useGristApi = (apiKey, onAuthError) => {
     const [isLoading, setIsLoading] = useState(false);
     const onAuthErrorRef = useRef(onAuthError);
@@ -80,7 +82,7 @@ const useGristApi = (apiKey, onAuthError) => {
     return { request, isLoading };
 };
 
-// --- API Key 管理組件 (無修改) ---
+// --- API Key 管理組件 ---
 const GristApiKeyManager = React.forwardRef(({ apiKey, onApiKeyUpdate, onStatusUpdate, initialAttemptFailed }, ref) => {
     const [localApiKey, setLocalApiKey] = useState(apiKey || '');
     useEffect(() => { setLocalApiKey(apiKey || ''); }, [apiKey]);
@@ -127,7 +129,7 @@ function GristDynamicSelectorViewer() {
     const [columns, setColumns] = useState([]);
     const [dataError, setDataError] = useState('');
     const apiKeyManagerRef = useRef(null);
-    const pollingTimerRef = useRef(null);
+    // pollingTimerRef 已被移至 login Hook 中
 
     const clearSubsequentState = useCallback(() => {
       setDocuments([]); setSelectedDocId('');
@@ -156,8 +158,10 @@ function GristDynamicSelectorViewer() {
     const { request: apiRequest, isLoading: isApiLoading } = useGristApi(apiKey, handleAuthError);
     
     useEffect(() => {
-      if (!localStorage.getItem('gristApiKey') && !apiKey) setInitialApiKeyAttemptFailed(true);
-      return () => clearTimeout(pollingTimerRef.current);
+      if (!localStorage.getItem('gristApiKey') && !apiKey) {
+        setInitialApiKeyAttemptFailed(true);
+      }
+      // 計時器的清理邏輯已移至 login Hook 內部，此處不再需要
     }, [apiKey]);
   
     useEffect(() => {
@@ -222,19 +226,12 @@ function GristDynamicSelectorViewer() {
       } catch (error) { setDataError(`獲取數據失敗: ${error.message}`); }
     }, [selectedDocId, selectedTableId, filterQuery, sortQuery, apiRequest]);
   
-    const openGristLoginPopup = useCallback(() => {
-      clearTimeout(pollingTimerRef.current);
-      const popup = window.open(`${GRIST_API_BASE_URL}/login`, 'GristLoginPopup', 'width=600,height=700');
-      if (!popup) { setStatusMessage("彈出視窗被阻擋"); return; }
-      setStatusMessage('請在新視窗中登入...');
-      const pollForApiKey = async () => {
-        if (popup.closed) { if (!apiKey) setStatusMessage('登入視窗已關閉'); return; }
-        const success = await apiKeyManagerRef.current?.triggerFetchKeyFromProfile();
-        if (success) popup.close();
-        else pollingTimerRef.current = setTimeout(pollForApiKey, 2500);
-      };
-      pollingTimerRef.current = setTimeout(pollForApiKey, 1000);
-    }, [apiKey]);
+    // 使用新的自定義 Hook 來管理彈出視窗登入邏輯
+    const { openLoginPopup } = login({
+      onFetchKeyAttempt: () => apiKeyManagerRef.current?.triggerFetchKeyFromProfile(),
+      onStatusUpdate: setStatusMessage,
+      hasApiKey: !!apiKey,
+    });
   
     const hasErrorStatus = statusMessage.includes('失敗') || statusMessage.includes('錯誤') || statusMessage.includes('失效') || dataError;
   
@@ -261,7 +258,8 @@ function GristDynamicSelectorViewer() {
             <div style={{ ...styles.card, textAlign: 'center', backgroundColor: '#fdecea', borderColor: '#dc3545' }}>
                 <p style={{ margin: '0 0 15px 0', fontWeight: '500', color: '#dc3545' }}>需要 API Key 才能繼續操作。</p>
                 <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-                    <button onClick={openGristLoginPopup} style={{...styles.buttonBase, ...styles.buttonPrimary}}>開啟登入視窗</button>
+                    {/* onClick 現在調用從 Hook 中獲取的函數 */}
+                    <button onClick={openLoginPopup} style={{...styles.buttonBase, ...styles.buttonPrimary}}>開啟登入視窗</button>
                     <button onClick={() => apiKeyManagerRef.current?.triggerFetchKeyFromProfile()} style={{...styles.buttonBase, ...styles.buttonSecondary}}>重試自動獲取</button>
                 </div>
             </div>
