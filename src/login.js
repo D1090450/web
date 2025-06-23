@@ -66,8 +66,8 @@ export const login = ({ onFetchKeyAttempt, onStatusUpdate, hasApiKey }) => {
                 popup.close();
                 popupRef.current = null;
             } else {
-                // 如果失敗，則在 2.5 秒後再次嘗試
-                pollingTimerRef.current = setTimeout(pollForApiKey, 2500);
+                // 如果失敗，則在 0.2 秒後再次嘗試
+                pollingTimerRef.current = setTimeout(pollForApiKey, 200);
             }
         };
 
