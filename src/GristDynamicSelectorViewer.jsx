@@ -77,31 +77,47 @@ const useGristApi = (apiKey, onAuthError) => {
     return { request, isLoading };
 };
 
-const GristApiKeyManager = React.forwardRef(({ apiKey, onApiKeyUpdate, onStatusUpdate, initialAttemptFailed }, ref) => {
+const GristApiKeyManager = React.forwardRef(({ apiKey, onApiKeyUpdate, onStatusUpdate }, ref) => {
     const [localApiKey, setLocalApiKey] = useState(apiKey || '');
     useEffect(() => { setLocalApiKey(apiKey || ''); }, [apiKey]);
+    
     const fetchKeyFromProfile = useCallback(async () => {
-      onStatusUpdate('正在獲取 API Key...');
       try {
         const response = await fetch(`${GRIST_API_BASE_URL}/api/profile/apiKey`, { credentials: 'include', headers: { 'Accept': 'text/plain' } });
         const fetchedKey = await response.text();
-        if (!response.ok || !fetchedKey || fetchedKey.includes('<') || fetchedKey.length < 32) throw new Error('獲取 API Key 無效');
+        if (!response.ok || !fetchedKey || fetchedKey.includes('<') || fetchedKey.length < 32) {
+          if (!apiKey) {
+            onStatusUpdate(`自動獲取失敗，請先登入 Grist。`);
+          }
+          return false;
+        }
         onApiKeyUpdate(fetchedKey.trim(), true);
         return true;
-      } catch (error) { onStatusUpdate(`自動獲取失敗 請先登入`); return false; }
-    }, [onApiKeyUpdate, onStatusUpdate]);
-    useEffect(() => { if (initialAttemptFailed && !apiKey) fetchKeyFromProfile(); }, [initialAttemptFailed, apiKey, fetchKeyFromProfile]);
-    React.useImperativeHandle(ref, () => ({ triggerFetchKeyFromProfile: fetchKeyFromProfile }));
+      } catch (error) {
+        if (!apiKey) {
+          onStatusUpdate(`自動獲取失敗，請檢查網路連線或 Grist 服務狀態。`);
+        }
+        return false;
+      }
+    }, [apiKey, onApiKeyUpdate, onStatusUpdate]);
+
+    React.useImperativeHandle(ref, () => ({
+        triggerFetchKeyFromProfile: fetchKeyFromProfile
+    }));
+
     const handleManualSubmit = () => {
-      if (localApiKey.trim()) onApiKeyUpdate(localApiKey.trim(), false);
-      else onStatusUpdate('請輸入有效 Key');
+      if (localApiKey.trim()) {
+        onApiKeyUpdate(localApiKey.trim(), false);
+      } else {
+        onStatusUpdate('請輸入有效的 API Key');
+      }
     };
     return (
       <div style={{ ...styles.card, borderStyle: 'dashed' }}>
         <h4 style={{ marginTop: '0', marginBottom: '15px' }}>API Key 管理</h4>
         <div style={{ display: 'flex', gap: '10px' }}>
           <input type="password" value={localApiKey} onChange={(e) => setLocalApiKey(e.target.value)} placeholder="在此輸入或貼上 Grist API Key" style={{ ...styles.inputBase, flexGrow: 1 }}/>
-          <button onClick={handleManualSubmit} style={{...styles.buttonBase, backgroundColor: '#e9ecef', color: '#333740' }}>設定 Key</button>
+          <button onClick={handleManualSubmit} style={{...styles.buttonBase, backgroundColor: '#e9ecef', color: '#333740' }}>手動設定</button>
         </div>
       </div>
     );
@@ -110,7 +126,7 @@ const GristApiKeyManager = React.forwardRef(({ apiKey, onApiKeyUpdate, onStatusU
 function GristDynamicSelectorViewer() {
     const [apiKey, setApiKey] = useState(() => localStorage.getItem('gristApiKey') || '');
     const [statusMessage, setStatusMessage] = useState('');
-    const [initialApiKeyAttemptFailed, setInitialApiKeyAttemptFailed] = useState(false);
+    const [showLoginPrompt, setShowLoginPrompt] = useState(false);
     const [documents, setDocuments] = useState([]);
     const [selectedDocId, setSelectedDocId] = useState('');
     const [tables, setTables] = useState([]);
@@ -129,10 +145,14 @@ function GristDynamicSelectorViewer() {
   
     const handleApiKeyUpdate = useCallback((key, autoFetched = false) => {
       setApiKey(key);
+      setShowLoginPrompt(false);
       if (key) {
         localStorage.setItem('gristApiKey', key);
-        setInitialApiKeyAttemptFailed(false);
-        setStatusMessage(autoFetched ? 'API Key 自動獲取成功！' : 'API Key 已設定。');
+        if (autoFetched) {
+             setStatusMessage('API Key 已與 Grist 會話同步！');
+        } else {
+             setStatusMessage('API Key 已手動設定。');
+        }
       } else {
         localStorage.removeItem('gristApiKey');
         clearSubsequentState();
@@ -140,21 +160,30 @@ function GristDynamicSelectorViewer() {
     }, [clearSubsequentState]);
   
     const handleAuthError = useCallback(() => {
-      setApiKey(''); localStorage.removeItem('gristApiKey');
-      setInitialApiKeyAttemptFailed(true); clearSubsequentState();
-      setStatusMessage('API Key 已失效或權限不足，請重新設定。');
+      setApiKey(''); 
+      localStorage.removeItem('gristApiKey');
+      clearSubsequentState();
+      setShowLoginPrompt(true);
+      setStatusMessage('API Key 已失效或權限不足，請重新登入 Grist 並刷新頁面，或手動設定。');
     }, [clearSubsequentState]);
   
     const { request: apiRequest, isLoading: isApiLoading } = useGristApi(apiKey, handleAuthError);
     
     useEffect(() => {
-      if (!localStorage.getItem('gristApiKey') && !apiKey) {
-        setInitialApiKeyAttemptFailed(true);
-      }
-    }, [apiKey]);
-  
+        setTimeout(() => {
+            apiKeyManagerRef.current?.triggerFetchKeyFromProfile();
+        }, 100);
+    }, []);
+
     useEffect(() => {
-      if (!apiKey) { clearSubsequentState(); return; }
+      if (!apiKey) {
+        clearSubsequentState();
+        if (!localStorage.getItem('gristApiKey')) {
+            setShowLoginPrompt(true);
+        }
+        return;
+      }
+      setShowLoginPrompt(false);
       const getOrgAndDocs = async () => {
         setStatusMessage('正在獲取組織與文檔...');
         try {
@@ -259,7 +288,7 @@ function GristDynamicSelectorViewer() {
       } catch (error) {
         setDataError(`獲取數據失敗: ${error.message}`);
       }
-    }, [selectedDocId, selectedTableId, sortQuery, apiRequest]);
+    }, [selectedDocId, selectedTableId, sortQuery, apiRequest, buildGristFilter]);
   
     const { openLoginPopup } = login({
       onFetchKeyAttempt: () => apiKeyManagerRef.current?.triggerFetchKeyFromProfile(),
@@ -284,15 +313,17 @@ function GristDynamicSelectorViewer() {
             )}
 
             <GristApiKeyManager
-                ref={apiKeyManagerRef} apiKey={apiKey} onApiKeyUpdate={handleApiKeyUpdate}
-                onStatusUpdate={setStatusMessage} initialAttemptFailed={initialApiKeyAttemptFailed}
+                ref={apiKeyManagerRef}
+                apiKey={apiKey}
+                onApiKeyUpdate={handleApiKeyUpdate}
+                onStatusUpdate={setStatusMessage}
             />
 
-            {initialApiKeyAttemptFailed && !apiKey && (
+            {showLoginPrompt && !apiKey && (
             <div style={{ ...styles.card, textAlign: 'center', backgroundColor: '#fdecea', borderColor: '#dc3545' }}>
-                <p style={{ margin: '0 0 15px 0', fontWeight: '500', color: '#dc3545' }}>需要 API Key 才能繼續操作。</p>
+                <p style={{ margin: '0 0 15px 0', fontWeight: '500', color: '#dc3545' }}>需要有效的 API Key 才能繼續操作。</p>
                 <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-                    <button onClick={openLoginPopup} style={{...styles.buttonBase, ...styles.buttonPrimary}}>開啟登入視窗</button>
+                    <button onClick={openLoginPopup} style={{...styles.buttonBase, ...styles.buttonPrimary}}>開啟 Grist 登入</button>
                     <button onClick={() => apiKeyManagerRef.current?.triggerFetchKeyFromProfile()} style={{...styles.buttonBase, ...styles.buttonSecondary}}>重試自動獲取</button>
                 </div>
             </div>
