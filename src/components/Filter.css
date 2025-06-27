@@ -1,0 +1,113 @@
+.filter-panel { /*面板樣式*/
+    border: 1px solid #ffffff; 
+    border-radius: 8px;        
+    padding: 40px;           
+    background-color: #ffffff; 
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+    max-width: 800px;         
+    margin: auto;              
+}
+
+.panel-title { /*標題*/
+    color: #005a9e;     
+    margin-top: 0;        
+    margin-bottom: 20px;   
+}
+
+.side-label-group { /*左右的群組*/
+    display: flex;          
+    align-items: center;   
+    gap: 20px;         
+}
+
+.group-title { /*左側的標題*/
+    font-weight: bold;         
+    color: #333;               
+    flex-shrink: 0; /*防止被壓縮*/
+    width: 100px;            
+    text-align: right;      
+}
+
+.options-list { /*右側的選項*/
+    display: flex;            
+    flex-direction: column; /*上到下排列*/
+    gap: 10px;               
+}
+
+.options-list > div { /*按鈕+文字*/
+    display: flex;         
+    align-items: center;       
+    gap: 5px;                 
+}
+
+.options-list label { /*文字*/
+    font-weight: normal;      
+    color: #333;            
+    white-space: nowrap; /* 不換行 */
+}
+
+.filter-grid { /*欄位*/
+    display: flex;            
+    flex-direction: column; /*上到下排列*/
+    gap: 15px;                
+}
+
+.form-row { /*欄位*/
+    display: flex;             
+    flex-wrap: wrap;         
+    align-items: stretch;  
+    gap: 85px;                 
+}
+
+.form-group {
+    display: flex; /*欄位群組*/         
+    align-items: center;     
+    gap: 8px;                
+    flex-wrap: wrap;           
+}
+
+.form-group label {
+    font-weight: bold;    
+    color: #333;              
+    white-space: nowrap;     
+}
+
+.date-range { /*日期文字*/
+    font-weight: bold;       
+    color: #333;               
+}
+
+
+input[type="date"],
+input[type="text"],
+select { /*輸入框*/
+    padding: 6px 10px;         
+    border: 1px solid #ccc;    
+    border-radius: 4px;       
+}
+
+.text-input-warning {
+    background-color: #fff0f0; 
+    border-color: #e5a0a0;     
+    color: #a35252;           
+}
+
+.action-buttons { /*按鈕群組*/
+    margin-top: 25px;      
+    display: flex;            
+    gap: 10px;              
+}
+
+.action-buttons button { /*按鈕*/
+    padding: 8px 16px;       
+    border: 1px solid #333;   
+    border-radius: 4px;        
+    background-color: #e7e7e7; 
+    cursor: pointer;          
+    font-size: 14px;           
+    color: #333;              
+}
+
+.action-buttons button:hover { /*滑鼠在上面*/
+    background-color: #dcdcdc; 
+}

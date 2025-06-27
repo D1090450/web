@@ -1,14 +1,11 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-// 導入新的自定義 Hook
-import { login } from './login'; // <-- 請確保路徑正確
+import { login } from './login';
+import Filter from './components/Filter';
 
-// --- 常量配置 ---
 const GRIST_API_BASE_URL = 'https://tiss-grist.fcuai.tw';
 const TARGET_ORG_DOMAIN = 'fcuai.tw';
 
-// --- 樣式對象 ---
 const styles = {
-  // 白色的主面板
   container: {
     fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',
     color: '#333740',
@@ -18,7 +15,7 @@ const styles = {
     padding: '40px',
     borderRadius: '8px',
     boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-    margin: '0 20px', // 在小螢幕上提供左右邊距
+    margin: '0 20px',
   },
   header: { textAlign: 'center', marginBottom: '30px' },
   title: { fontSize: '28px', fontWeight: '600', color: '#333740', marginBottom: '10px' },
@@ -53,8 +50,6 @@ const styles = {
   td: { padding: '12px', whiteSpace: 'nowrap', color: '#555e6d', borderBottom: '1px solid #dee2e6' },
 };
 
-
-// --- 自定義 Hook (useGristApi) ---
 const useGristApi = (apiKey, onAuthError) => {
     const [isLoading, setIsLoading] = useState(false);
     const onAuthErrorRef = useRef(onAuthError);
@@ -82,7 +77,6 @@ const useGristApi = (apiKey, onAuthError) => {
     return { request, isLoading };
 };
 
-// --- API Key 管理組件 ---
 const GristApiKeyManager = React.forwardRef(({ apiKey, onApiKeyUpdate, onStatusUpdate, initialAttemptFailed }, ref) => {
     const [localApiKey, setLocalApiKey] = useState(apiKey || '');
     useEffect(() => { setLocalApiKey(apiKey || ''); }, [apiKey]);
@@ -113,8 +107,6 @@ const GristApiKeyManager = React.forwardRef(({ apiKey, onApiKeyUpdate, onStatusU
     );
 });
 
-
-// --- 主應用組件 ---
 function GristDynamicSelectorViewer() {
     const [apiKey, setApiKey] = useState(() => localStorage.getItem('gristApiKey') || '');
     const [statusMessage, setStatusMessage] = useState('');
@@ -123,13 +115,11 @@ function GristDynamicSelectorViewer() {
     const [selectedDocId, setSelectedDocId] = useState('');
     const [tables, setTables] = useState([]);
     const [selectedTableId, setSelectedTableId] = useState('');
-    const [filterQuery, setFilterQuery] = useState('');
     const [sortQuery, setSortQuery] = useState('');
     const [tableData, setTableData] = useState(null);
     const [columns, setColumns] = useState([]);
     const [dataError, setDataError] = useState('');
     const apiKeyManagerRef = useRef(null);
-    // pollingTimerRef 已被移至 login Hook 中
 
     const clearSubsequentState = useCallback(() => {
       setDocuments([]); setSelectedDocId('');
@@ -161,7 +151,6 @@ function GristDynamicSelectorViewer() {
       if (!localStorage.getItem('gristApiKey') && !apiKey) {
         setInitialApiKeyAttemptFailed(true);
       }
-      // 計時器的清理邏輯已移至 login Hook 內部，此處不再需要
     }, [apiKey]);
   
     useEffect(() => {
@@ -204,15 +193,54 @@ function GristDynamicSelectorViewer() {
       fetchTables();
     }, [selectedDocId, apiRequest]);
   
-    const handleFetchTableData = useCallback(async () => {
-      if (!selectedTableId) { setDataError('請先選擇表格'); return; }
-      setDataError(''); setTableData(null); setColumns([]);
-      setStatusMessage(`正在獲取 ${selectedTableId} 數據...`);
+    const buildGristFilter = (filters) => {
+        const conditions = ['and'];
+        const getField = (fieldName) => ['record.fields.get', fieldName];
+
+        if (filters.gender && filters.gender !== 'all') {
+            conditions.push(['=', getField('性別'), filters.gender === 'male' ? '男' : '女']);
+        }
+        if (filters.dateRange?.start) {
+            conditions.push(['>=', getField('日期'), filters.dateRange.start]);
+        }
+        if (filters.dateRange?.end) {
+            conditions.push(['<=', getField('日期'), filters.dateRange.end]);
+        }
+        if (filters.days && !filters.days.all) {
+            const dayMap = { sun: '星期日', mon: '星期一', tue: '星期二', wed: '星期三', thu: '星期四', fri: '星期五', sat: '星期六' };
+            const selectedDays = Object.keys(filters.days)
+                .filter(day => day !== 'all' && filters.days[day])
+                .map(day => dayMap[day]);
+            if (selectedDays.length > 0) {
+                conditions.push(['in', getField('星期'), selectedDays]);
+            }
+        }
+        if (filters.title && filters.title.trim() !== '') {
+            conditions.push(['.includes', getField('職稱'), filters.title.trim()]);
+        }
+        return conditions.length > 1 ? JSON.stringify(conditions) : null;
+    };
+
+    const handleFilterSubmit = useCallback(async (filters) => {
+      if (!selectedTableId) {
+        setDataError('請先選擇表格');
+        return;
+      }
+      setDataError('');
+      setTableData(null);
+      setColumns([]);
+      setStatusMessage(`正在根據篩選條件獲取 ${selectedTableId} 數據...`);
+
+      const filterJson = buildGristFilter(filters);
       const params = { limit: '50' };
-      try {
-          if (filterQuery) params.filter = JSON.stringify(JSON.parse(filterQuery));
-      } catch (e) { setDataError('過濾條件非有效 JSON'); return; }
-      if (sortQuery.trim()) params.sort = sortQuery.trim();
+
+      if (filterJson) {
+        params.filter = filterJson;
+      }
+      if (sortQuery.trim()) {
+        params.sort = sortQuery.trim();
+      }
+
       try {
         const data = await apiRequest(`/api/docs/${selectedDocId}/tables/${selectedTableId}/records`, 'GET', params);
         if (data?.records) {
@@ -221,12 +249,18 @@ function GristDynamicSelectorViewer() {
             const allCols = new Set(data.records.flatMap(rec => Object.keys(rec.fields || {})));
             setColumns(Array.from(allCols));
             setStatusMessage(`成功獲取 ${data.records.length} 條數據`);
-          } else { setColumns([]); setStatusMessage('獲取成功，但結果為空'); }
-        } else { throw new Error('返回數據格式不正確'); }
-      } catch (error) { setDataError(`獲取數據失敗: ${error.message}`); }
-    }, [selectedDocId, selectedTableId, filterQuery, sortQuery, apiRequest]);
+          } else {
+            setColumns([]);
+            setStatusMessage('獲取成功，但結果為空');
+          }
+        } else {
+          throw new Error('返回數據格式不正確');
+        }
+      } catch (error) {
+        setDataError(`獲取數據失敗: ${error.message}`);
+      }
+    }, [selectedDocId, selectedTableId, sortQuery, apiRequest]);
   
-    // 使用新的自定義 Hook 來管理彈出視窗登入邏輯
     const { openLoginPopup } = login({
       onFetchKeyAttempt: () => apiKeyManagerRef.current?.triggerFetchKeyFromProfile(),
       onStatusUpdate: setStatusMessage,
@@ -258,7 +292,6 @@ function GristDynamicSelectorViewer() {
             <div style={{ ...styles.card, textAlign: 'center', backgroundColor: '#fdecea', borderColor: '#dc3545' }}>
                 <p style={{ margin: '0 0 15px 0', fontWeight: '500', color: '#dc3545' }}>需要 API Key 才能繼續操作。</p>
                 <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-                    {/* onClick 現在調用從 Hook 中獲取的函數 */}
                     <button onClick={openLoginPopup} style={{...styles.buttonBase, ...styles.buttonPrimary}}>開啟登入視窗</button>
                     <button onClick={() => apiKeyManagerRef.current?.triggerFetchKeyFromProfile()} style={{...styles.buttonBase, ...styles.buttonSecondary}}>重試自動獲取</button>
                 </div>
@@ -287,14 +320,14 @@ function GristDynamicSelectorViewer() {
                 )}
 
                 {selectedTableId && (
-                <div style={{ ...styles.card, backgroundColor: '#ffffff', padding: '20px', marginTop: '10px' }}>
-                    <h4 style={{ marginTop: '0', marginBottom: '15px' }}>數據獲取選項</h4>
-                    <input type="text" value={filterQuery} onChange={(e) => setFilterQuery(e.target.value)} placeholder='過濾條件 (JSON) e.g., {"Column": "Value"}' style={{...styles.inputBase, marginBottom: '10px'}}/>
-                    <input type="text" value={sortQuery} onChange={(e) => setSortQuery(e.target.value)} placeholder='排序條件 e.g., Column, -AnotherColumn' style={{...styles.inputBase, marginBottom: '20px'}}/>
-                    <button onClick={handleFetchTableData} disabled={isApiLoading} style={{...styles.buttonBase, ...styles.buttonPrimary, width: '100%', ...(isApiLoading && styles.buttonDisabled)}}>
-                        {isApiLoading ? '加載中...' : `獲取 "${selectedTableId}" 的數據`}
-                    </button>
-                </div>
+                <>
+                    <Filter onSubmit={handleFilterSubmit} isLoading={isApiLoading} />
+                    <div style={{ ...styles.card, backgroundColor: '#ffffff', padding: '20px', marginTop: '20px' }}>
+                        <h4 style={{ marginTop: '0', marginBottom: '15px' }}>數據排序選項</h4>
+                        <input type="text" value={sortQuery} onChange={(e) => setSortQuery(e.target.value)} placeholder='排序條件 e.g., Column, -AnotherColumn' style={styles.inputBase}/>
+                         <small style={{display: 'block', marginTop: '8px', color: '#6c757d'}}>排序功能與上方篩選器可同時使用。在上方點擊「套用篩選並獲取數據」按鈕以生效。</small>
+                    </div>
+                </>
                 )}
                 {dataError && <p style={{...styles.statusMessage(true), marginTop: '15px' }}>⚠️ 錯誤: {dataError}</p>}
             </div>
