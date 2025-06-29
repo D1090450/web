@@ -1,12 +1,37 @@
-# React + Vite
+# Grist 數據動態查看器
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+一個基於 **React** 的前端應用，提供直覺且即時的界面，用於連接、篩選與展示 [Grist](https://www.getgrist.com/) 表格中的數據。
 
-Currently, two official plugins are available:
+## ✨ 主要功能
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **API 金鑰管理**  
+  自動獲取或手動設定 Grist API 金鑰。
 
-## Expanding the ESLint configuration
+- **動態數據源選擇**  
+  從使用者有權限的文檔與表格中動態選取來源。
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- **前端即時篩選**  
+  多條件客戶端篩選，快速查看所需資料。
+
+- **前端即時排序**  
+  多欄位升序／降序排序支援。
+
+- **表格化數據展示**  
+  以清晰的表格呈現經過篩選與排序的結果。
+
+## 🔑 API 金鑰使用條件
+
+應用程式在自動取得 API 金鑰前，請確認以下條件皆已滿足：
+
+1. 使用者已登入 Grist 並完成 Authentik 驗證。
+2. 瀏覽器中已儲存有效的 `grist_core` Cookie。
+3. 本應用程式與 Grist 部署於相同父級網域（允許 Cookie 跨子網域傳遞）。
+
+## 🚀 安裝與啟動
+
+```bash
+# 安裝依賴
+npm install
+
+# 啟動開發伺服器
+npm run dev
