@@ -140,8 +140,6 @@ function GristDynamicSelectorViewer() {
     const [activeFilters, setActiveFilters] = useState(null);
     const [sortQuery, setSortQuery] = useState('');
 
-    // --- 【修正點】: 將 handleAuthError 和其他回調函式的定義移到 useGristApi 之前 ---
-
     const clearSubsequentState = useCallback(() => {
       setDocuments([]); setSelectedDocId('');
       setTables([]); setSelectedTableId('');
@@ -164,39 +162,77 @@ function GristDynamicSelectorViewer() {
       setStatusMessage('API Key 已失效或權限不足，請重新登入 Grist 並刷新頁面，或手動設定。');
     }, [clearSubsequentState]);
 
-    // 現在 useGristApi 在 handleAuthError 被定義之後才被呼叫
     const { request: apiRequest, isLoading: isApiLoading } = useGristApi(apiKey, handleAuthError);
 
-    // --- 本地篩選與排序函數 (無變更) ---
-
+    // --- 【主要修改點】: 本地篩選函數 ---
     const applyLocalFilters = (data, filters) => {
         if (!filters || !data) return data;
+
+        // 檢查是否有任何與日期相關的篩選被啟用
+        const isDateFilterActive = (filters.dateRange?.start || filters.dateRange?.end || (filters.days && !filters.days.all));
+
         return data.filter(record => {
             const fields = record.fields || {};
+
+            // --- 日期和星期篩選邏輯 ---
+            if (isDateFilterActive) {
+                const timestamp = fields['MOD_DTE'];
+
+                // 如果沒有時間戳或時間戳不是數字，則過濾掉此記錄
+                if (timestamp == null || typeof timestamp !== 'number') {
+                    return false;
+                }
+
+                // 將 Unix timestamp (假設是秒) 轉換為 JavaScript Date 物件
+                // 如果您的 timestamp 是毫秒，請移除 "* 1000"
+                const recordDate = new Date(timestamp * 1000);
+
+                // 驗證轉換後的日期是否有效
+                if (isNaN(recordDate.getTime())) {
+                    return false;
+                }
+
+                // 1. 時間區段篩選
+                if (filters.dateRange?.start) {
+                    const startDate = new Date(filters.dateRange.start);
+                    // 為確保比較準確，將時間設為當天開始
+                    startDate.setHours(0, 0, 0, 0);
+                    if (recordDate < startDate) return false;
+                }
+                if (filters.dateRange?.end) {
+                    const endDate = new Date(filters.dateRange.end);
+                    // 將結束日期設為隔天的開始，以包含結束日期的所有時間
+                    endDate.setDate(endDate.getDate() + 1);
+                    endDate.setHours(0, 0, 0, 0);
+                    if (recordDate >= endDate) return false;
+                }
+
+                // 2. 星期篩選
+                if (filters.days && !filters.days.all) {
+                    const dayMap = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+                    const recordDayIndex = recordDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
+                    const selectedDays = Object.keys(filters.days)
+                        .filter(day => day !== 'all' && filters.days[day])
+                        .map(day => dayMap[day]);
+                    
+                    // 如果有選擇特定星期，但記錄的星期不在其中，則過濾掉
+                    if (selectedDays.length > 0 && !selectedDays.includes(recordDayIndex)) {
+                        return false;
+                    }
+                }
+            }
+            
+            // --- 其他篩選邏輯 (保持不變) ---
             if (filters.gender && filters.gender !== 'all') {
                 const expectedGender = filters.gender === 'male' ? '男' : '女';
                 if (fields['性別'] !== expectedGender) return false;
             }
-            if (fields['日期']) {
-                try {
-                    const recordDate = new Date(fields['日期']);
-                    if (filters.dateRange?.start && recordDate < new Date(filters.dateRange.start)) return false;
-                    if (filters.dateRange?.end && recordDate > new Date(filters.dateRange.end)) return false;
-                } catch (e) { /* 忽略無效日期 */ }
-            }
-            if (filters.days && !filters.days.all && fields['日期']) {
-                try {
-                    const dayMap = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
-                    const recordDayIndex = new Date(fields['日期']).getDay();
-                    const selectedDays = Object.keys(filters.days)
-                        .filter(day => day !== 'all' && filters.days[day])
-                        .map(day => dayMap[day]);
-                    if (selectedDays.length > 0 && !selectedDays.includes(recordDayIndex)) return false;
-                } catch(e) { /* 忽略無效日期 */ }
-            }
+
             if (filters.title && filters.title.trim() !== '') {
                 if (!fields['職稱'] || !String(fields['職稱']).toLowerCase().includes(filters.title.trim().toLowerCase())) return false;
             }
+            
+            // 如果所有篩選都通過，則保留此記錄
             return true;
         });
     };
@@ -222,8 +258,6 @@ function GristDynamicSelectorViewer() {
         return sortedData;
     };
     
-    // --- 所有 useEffect hooks (無變更) ---
-
     useEffect(() => {
         if (!rawTableData) {
             setTableData(null);
