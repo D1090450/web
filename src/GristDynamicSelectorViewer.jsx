@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { useGristLoginPopup as login } from './login'; 
-import Filter from './Filter';
+import { login } from './login';
+import Filter from './components/Filter';
 
 const GRIST_API_BASE_URL = 'https://tiss-grist.fcuai.tw';
 const TARGET_ORG_DOMAIN = 'fcuai.tw';
