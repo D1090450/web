@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { login } from './login';
-import Filter from './components/Filter';
+import { useGristLoginPopup as login } from './login'; 
+import Filter from './Filter';
 
 const GRIST_API_BASE_URL = 'https://tiss-grist.fcuai.tw';
 const TARGET_ORG_DOMAIN = 'fcuai.tw';
@@ -222,32 +222,74 @@ function GristDynamicSelectorViewer() {
       fetchTables();
     }, [selectedDocId, apiRequest]);
   
+    // --- 這是本次修改的核心 ---
     const buildGristFilter = (filters) => {
-        const conditions = ['and'];
-        const getField = (fieldName) => ['record.fields.get', fieldName];
+        // 檢查是否需要使用高級篩選（因為簡單格式不支持日期範圍和模糊搜索）
+        const needsAdvancedFilter = 
+            (filters.dateRange?.start || filters.dateRange?.end) ||
+            (filters.title && filters.title.trim() !== '');
 
-        if (filters.gender && filters.gender !== 'all') {
-            conditions.push(['=', getField('性別'), filters.gender === 'male' ? '男' : '女']);
-        }
-        if (filters.dateRange?.start) {
-            conditions.push(['>=', getField('日期'), filters.dateRange.start]);
-        }
-        if (filters.dateRange?.end) {
-            conditions.push(['<=', getField('日期'), filters.dateRange.end]);
-        }
-        if (filters.days && !filters.days.all) {
-            const dayMap = { sun: '星期日', mon: '星期一', tue: '星期二', wed: '星期三', thu: '星期四', fri: '星期五', sat: '星期六' };
-            const selectedDays = Object.keys(filters.days)
-                .filter(day => day !== 'all' && filters.days[day])
-                .map(day => dayMap[day]);
-            if (selectedDays.length > 0) {
-                conditions.push(['in', getField('星期'), selectedDays]);
+        if (needsAdvancedFilter) {
+            // --- 使用公式型篩選（適用於日期、模糊搜索等高級場景） ---
+            const conditions = ['and'];
+            const getField = (fieldName) => ['record.fields.get', fieldName];
+
+            // 性別
+            if (filters.gender && filters.gender !== 'all') {
+                conditions.push(['in', getField('性別'), [filters.gender === 'male' ? '男' : '女']]);
             }
+            // 日期區間
+            if (filters.dateRange?.start) {
+                conditions.push(['>=', getField('日期'), filters.dateRange.start]);
+            }
+            if (filters.dateRange?.end) {
+                conditions.push(['<=', getField('日期'), filters.dateRange.end]);
+            }
+            // 星期
+            if (filters.days && !filters.days.all) {
+                const dayMap = { sun: '星期日', mon: '星期一', tue: '星期二', wed: '星期三', thu: '星期四', fri: '星期五', sat: '星期六' };
+                const selectedDays = Object.keys(filters.days)
+                    .filter(day => day !== 'all' && filters.days[day])
+                    .map(day => dayMap[day]);
+                if (selectedDays.length > 0) {
+                    conditions.push(['in', getField('星期'), selectedDays]);
+                }
+            }
+            // 職稱模糊搜索
+            if (filters.title && filters.title.trim() !== '') {
+                conditions.push(['.includes', getField('職稱'), filters.title.trim()]);
+            }
+
+            return conditions.length > 1 ? JSON.stringify(conditions) : null;
+
+        } else {
+            // --- 使用簡單鍵值對篩選（完全符合您提供的規則） ---
+            const filterObject = {};
+
+            // 性別
+            if (filters.gender && filters.gender !== 'all') {
+                // 重要：欄位名 "性別" 必須與您 Grist 表格中的完全一樣
+                filterObject['性別'] = [filters.gender === 'male' ? '男' : '女'];
+            }
+            // 星期
+            if (filters.days && !filters.days.all) {
+                const dayMap = { sun: '星期日', mon: '星期一', tue: '星期二', wed: '星期三', thu: '星期四', fri: '星期五', sat: '星期六' };
+                const selectedDays = Object.keys(filters.days)
+                    .filter(day => day !== 'all' && filters.days[day])
+                    .map(day => dayMap[day]);
+
+                if (selectedDays.length > 0) {
+                    // 重要：欄位名 "星期" 必須與您 Grist 表格中的完全一樣
+                    filterObject['星期'] = selectedDays;
+                }
+            }
+            
+            // 如果沒有任何篩選條件，返回 null
+            if (Object.keys(filterObject).length === 0) {
+                return null;
+            }
+            return JSON.stringify(filterObject);
         }
-        if (filters.title && filters.title.trim() !== '') {
-            conditions.push(['.includes', getField('職稱'), filters.title.trim()]);
-        }
-        return conditions.length > 1 ? JSON.stringify(conditions) : null;
     };
 
     const handleFilterSubmit = useCallback(async (filters) => {
@@ -288,7 +330,7 @@ function GristDynamicSelectorViewer() {
       } catch (error) {
         setDataError(`獲取數據失敗: ${error.message}`);
       }
-    }, [selectedDocId, selectedTableId, sortQuery, apiRequest, buildGristFilter]);
+    }, [selectedDocId, selectedTableId, sortQuery, apiRequest]);
   
     const { openLoginPopup } = login({
       onFetchKeyAttempt: () => apiKeyManagerRef.current?.triggerFetchKeyFromProfile(),
