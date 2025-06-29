@@ -135,133 +135,13 @@ function GristDynamicSelectorViewer() {
     const [dataError, setDataError] = useState('');
     const apiKeyManagerRef = useRef(null);
 
-    // --- State 管理變更 ---
     const [rawTableData, setRawTableData] = useState(null); 
     const [tableData, setTableData] = useState(null);
     const [activeFilters, setActiveFilters] = useState(null);
     const [sortQuery, setSortQuery] = useState('');
 
-    const { request: apiRequest, isLoading: isApiLoading } = useGristApi(apiKey, handleAuthError);
-    
-    // --- 本地篩選函數 ---
-    const applyLocalFilters = (data, filters) => {
-        if (!filters || !data) return data;
+    // --- 【修正點】: 將 handleAuthError 和其他回調函式的定義移到 useGristApi 之前 ---
 
-        return data.filter(record => {
-            const fields = record.fields || {};
-            // 提醒: 這裡的 '性別', '日期', '星期', '職稱' 必須與你 Grist 表格中的欄位 ID (Column ID) 完全對應
-            if (filters.gender && filters.gender !== 'all') {
-                const expectedGender = filters.gender === 'male' ? '男' : '女';
-                if (fields['性別'] !== expectedGender) return false;
-            }
-
-            if (fields['日期']) {
-                try {
-                    const recordDate = new Date(fields['日期']);
-                    if (filters.dateRange?.start && recordDate < new Date(filters.dateRange.start)) return false;
-                    if (filters.dateRange?.end && recordDate > new Date(filters.dateRange.end)) return false;
-                } catch (e) { /* 忽略無效日期 */ }
-            }
-
-            if (filters.days && !filters.days.all && fields['日期']) {
-                try {
-                    const dayMap = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
-                    const recordDayIndex = new Date(fields['日期']).getDay();
-                    const selectedDays = Object.keys(filters.days)
-                        .filter(day => day !== 'all' && filters.days[day])
-                        .map(day => dayMap[day]);
-                    if (selectedDays.length > 0 && !selectedDays.includes(recordDayIndex)) return false;
-                } catch(e) { /* 忽略無效日期 */ }
-            }
-
-            if (filters.title && filters.title.trim() !== '') {
-                if (!fields['職稱'] || !String(fields['職稱']).toLowerCase().includes(filters.title.trim().toLowerCase())) return false;
-            }
-            
-            return true;
-        });
-    };
-
-    // --- 本地排序函數 ---
-    const applyLocalSort = (data, sortStr) => {
-        if (!sortStr || !data) return data;
-        
-        const sortKeys = sortStr.split(',').map(key => {
-            const trimmedKey = key.trim();
-            return { key: trimmedKey.startsWith('-') ? trimmedKey.substring(1) : trimmedKey, order: trimmedKey.startsWith('-') ? 'desc' : 'asc' };
-        }).filter(item => item.key);
-
-        if (sortKeys.length === 0) return data;
-
-        const sortedData = [...data];
-        
-        sortedData.sort((a, b) => {
-            for (const { key, order } of sortKeys) {
-                const valA = a.fields?.[key];
-                const valB = b.fields?.[key];
-                if (valA === valB) continue;
-                const comparison = (valA ?? '') < (valB ?? '') ? -1 : 1;
-                return order === 'asc' ? comparison : -comparison;
-            }
-            return 0;
-        });
-
-        return sortedData;
-    };
-    
-    // --- 監聽篩選和排序變化的 useEffect ---
-    useEffect(() => {
-        if (!rawTableData) {
-            setTableData(null);
-            return;
-        }
-        let processedData = applyLocalFilters(rawTableData, activeFilters);
-        processedData = applyLocalSort(processedData, sortQuery);
-        setTableData(processedData);
-    }, [rawTableData, activeFilters, sortQuery]);
-
-    // --- 選擇表格後獲取初始數據的 useEffect ---
-    useEffect(() => {
-      if (!selectedTableId) { 
-        setRawTableData(null);
-        setColumns([]);
-        return; 
-      }
-      
-      const fetchInitialTableData = async () => {
-        setStatusMessage(`正在獲取 ${selectedTableId} 的前 200 筆數據...`);
-        setDataError('');
-        setActiveFilters(null);
-        setSortQuery('');
-
-        try {
-          const data = await apiRequest(`/api/docs/${selectedDocId}/tables/${selectedTableId}/records`, 'GET', { limit: '200' });
-          if (data?.records) {
-            setRawTableData(data.records);
-            if (data.records.length > 0) {
-              const allCols = new Set(data.records.flatMap(rec => Object.keys(rec.fields || {})));
-              setColumns(Array.from(allCols));
-              setStatusMessage(`成功獲取 ${data.records.length} 筆數據，您現在可以在下方進行篩選。`);
-            } else {
-              setColumns([]);
-              setStatusMessage('獲取成功，但此表格沒有數據。');
-            }
-          } else { throw new Error('返回數據格式不正確'); }
-        } catch (error) {
-          setDataError(`獲取數據失敗: ${error.message}`);
-          setRawTableData(null);
-        }
-      };
-
-      fetchInitialTableData();
-    }, [selectedTableId, selectedDocId, apiRequest]);
-
-    // --- Filter 元件提交處理函數 ---
-    const handleFilterChange = useCallback((filters) => {
-        setActiveFilters(filters);
-    }, []);
-
-    // --- 以下為未變更的核心邏輯 ---
     const clearSubsequentState = useCallback(() => {
       setDocuments([]); setSelectedDocId('');
       setTables([]); setSelectedTableId('');
@@ -283,6 +163,112 @@ function GristDynamicSelectorViewer() {
       clearSubsequentState(); setShowLoginPrompt(true);
       setStatusMessage('API Key 已失效或權限不足，請重新登入 Grist 並刷新頁面，或手動設定。');
     }, [clearSubsequentState]);
+
+    // 現在 useGristApi 在 handleAuthError 被定義之後才被呼叫
+    const { request: apiRequest, isLoading: isApiLoading } = useGristApi(apiKey, handleAuthError);
+
+    // --- 本地篩選與排序函數 (無變更) ---
+
+    const applyLocalFilters = (data, filters) => {
+        if (!filters || !data) return data;
+        return data.filter(record => {
+            const fields = record.fields || {};
+            if (filters.gender && filters.gender !== 'all') {
+                const expectedGender = filters.gender === 'male' ? '男' : '女';
+                if (fields['性別'] !== expectedGender) return false;
+            }
+            if (fields['日期']) {
+                try {
+                    const recordDate = new Date(fields['日期']);
+                    if (filters.dateRange?.start && recordDate < new Date(filters.dateRange.start)) return false;
+                    if (filters.dateRange?.end && recordDate > new Date(filters.dateRange.end)) return false;
+                } catch (e) { /* 忽略無效日期 */ }
+            }
+            if (filters.days && !filters.days.all && fields['日期']) {
+                try {
+                    const dayMap = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+                    const recordDayIndex = new Date(fields['日期']).getDay();
+                    const selectedDays = Object.keys(filters.days)
+                        .filter(day => day !== 'all' && filters.days[day])
+                        .map(day => dayMap[day]);
+                    if (selectedDays.length > 0 && !selectedDays.includes(recordDayIndex)) return false;
+                } catch(e) { /* 忽略無效日期 */ }
+            }
+            if (filters.title && filters.title.trim() !== '') {
+                if (!fields['職稱'] || !String(fields['職稱']).toLowerCase().includes(filters.title.trim().toLowerCase())) return false;
+            }
+            return true;
+        });
+    };
+
+    const applyLocalSort = (data, sortStr) => {
+        if (!sortStr || !data) return data;
+        const sortKeys = sortStr.split(',').map(key => {
+            const trimmedKey = key.trim();
+            return { key: trimmedKey.startsWith('-') ? trimmedKey.substring(1) : trimmedKey, order: trimmedKey.startsWith('-') ? 'desc' : 'asc' };
+        }).filter(item => item.key);
+        if (sortKeys.length === 0) return data;
+        const sortedData = [...data];
+        sortedData.sort((a, b) => {
+            for (const { key, order } of sortKeys) {
+                const valA = a.fields?.[key];
+                const valB = b.fields?.[key];
+                if (valA === valB) continue;
+                const comparison = (valA ?? '') < (valB ?? '') ? -1 : 1;
+                return order === 'asc' ? comparison : -comparison;
+            }
+            return 0;
+        });
+        return sortedData;
+    };
+    
+    // --- 所有 useEffect hooks (無變更) ---
+
+    useEffect(() => {
+        if (!rawTableData) {
+            setTableData(null);
+            return;
+        }
+        let processedData = applyLocalFilters(rawTableData, activeFilters);
+        processedData = applyLocalSort(processedData, sortQuery);
+        setTableData(processedData);
+    }, [rawTableData, activeFilters, sortQuery]);
+
+    useEffect(() => {
+      if (!selectedTableId) { 
+        setRawTableData(null);
+        setColumns([]);
+        return; 
+      }
+      const fetchInitialTableData = async () => {
+        setStatusMessage(`正在獲取 ${selectedTableId} 的前 200 筆數據...`);
+        setDataError('');
+        setActiveFilters(null);
+        setSortQuery('');
+        try {
+          const data = await apiRequest(`/api/docs/${selectedDocId}/tables/${selectedTableId}/records`, 'GET', { limit: '200' });
+          if (data?.records) {
+            setRawTableData(data.records);
+            if (data.records.length > 0) {
+              const allCols = new Set(data.records.flatMap(rec => Object.keys(rec.fields || {})));
+              setColumns(Array.from(allCols));
+              setStatusMessage(`成功獲取 ${data.records.length} 筆數據，您現在可以在下方進行篩選。`);
+            } else {
+              setColumns([]);
+              setStatusMessage('獲取成功，但此表格沒有數據。');
+            }
+          } else { throw new Error('返回數據格式不正確'); }
+        } catch (error) {
+          setDataError(`獲取數據失敗: ${error.message}`);
+          setRawTableData(null);
+        }
+      };
+      fetchInitialTableData();
+    }, [selectedTableId, selectedDocId, apiRequest]);
+
+    const handleFilterChange = useCallback((filters) => {
+        setActiveFilters(filters);
+    }, []);
     
     useEffect(() => { setTimeout(() => { apiKeyManagerRef.current?.triggerFetchKeyFromProfile(); }, 100); }, []);
 
