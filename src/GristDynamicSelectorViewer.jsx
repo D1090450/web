@@ -1,9 +1,11 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 
-import { login } from './login'; 
+// --- 更新後的 import ---
+import { login } from './login';
 import Filter from './components/Filter';
-import { useGristData } from './hooks/useGristData'; 
-import { formatTimestamp } from './utils/formatTimestamp'; 
+import { useGristData } from './hooks/useGristData';
+import { formatTimestamp } from './utils/formatTimestamp';
+import { Table } from './components/Table'; // 導入新的 Table 組件
 
 const GRIST_API_BASE_URL = 'https://tiss-grist.fcuai.tw';
 
@@ -42,20 +44,13 @@ const styles = {
   },
   buttonPrimary: { backgroundColor: '#007bff', color: '#ffffff' },
   buttonSecondary: { backgroundColor: '#6c757d', color: '#ffffff' },
-  buttonDisabled: { backgroundColor: '#adb5bd', cursor: 'not-allowed', opacity: 0.7 },
-  tableContainer: { marginTop: '30px', overflowX: 'auto', border: '1px solid #dee2e6', borderRadius: '6px' },
-  table: { width: '100%', borderCollapse: 'collapse', fontSize: '14px' },
-  th: {
-    backgroundColor: '#e9ecef', padding: '14px 12px', textAlign: 'left',
-    color: '#333740', fontWeight: '600', borderBottom: '2px solid #dee2e6',
-  },
-  td: { padding: '12px', whiteSpace: 'nowrap', color: '#555e6d', borderBottom: '1px solid #dee2e6' },
 };
 
+// API Key 管理組件保持不變
 const GristApiKeyManager = React.forwardRef(({ apiKey, onApiKeyUpdate, onStatusUpdate }, ref) => {
+    // ... 內部程式碼完全不變 ...
     const [localApiKey, setLocalApiKey] = useState(apiKey || '');
     useEffect(() => { setLocalApiKey(apiKey || ''); }, [apiKey]);
-    
     const fetchKeyFromProfile = useCallback(async () => {
       try {
         const response = await fetch(`${GRIST_API_BASE_URL}/api/profile/apiKey`, { credentials: 'include', headers: { 'Accept': 'text/plain' } });
@@ -71,9 +66,7 @@ const GristApiKeyManager = React.forwardRef(({ apiKey, onApiKeyUpdate, onStatusU
         return false;
       }
     }, [apiKey, onApiKeyUpdate, onStatusUpdate]);
-
     React.useImperativeHandle(ref, () => ({ triggerFetchKeyFromProfile: fetchKeyFromProfile }));
-
     const handleManualSubmit = () => {
       if (localApiKey.trim()) onApiKeyUpdate(localApiKey.trim(), false);
       else onStatusUpdate('請輸入有效的 API Key');
@@ -89,7 +82,7 @@ const GristApiKeyManager = React.forwardRef(({ apiKey, onApiKeyUpdate, onStatusU
     );
 });
 
-
+// 主組件
 function GristDynamicSelectorViewer() {
     const [apiKey, setApiKey] = useState(() => localStorage.getItem('gristApiKey') || '');
     const [statusMessage, setStatusMessage] = useState('');
@@ -103,16 +96,14 @@ function GristDynamicSelectorViewer() {
         error: dataError,
         documents,
         tables,
-        columns,
+        columns: dataColumns,
         tableData,
         handleFilterChange,
-        sortQuery,
-        setSortQuery
     } = useGristData({
         apiKey,
         selectedDocId,
         selectedTableId,
-        onAuthError: () => { // 權限錯誤時的回調
+        onAuthError: () => {
             setApiKey('');
             localStorage.removeItem('gristApiKey');
             setShowLoginPrompt(true);
@@ -120,9 +111,55 @@ function GristDynamicSelectorViewer() {
         }
     });
 
+    const columns = useMemo(() => {
+        if (!dataColumns || dataColumns.length === 0) return [];
+
+        // 固定 id 欄位在最前面
+        const idColumn = {
+            accessorKey: 'id',
+            header: 'id',
+        };
+
+        const otherColumns = dataColumns
+            .filter(colId => colId !== 'id') // 確保不重複
+            .map(colId => {
+                const columnDef = {
+                    accessorKey: `fields.${colId}`, // 讓 TanStack Table 能深入讀取 fields 物件
+                    header: colId,
+                    // 預設的儲存格渲染
+                    cell: info => {
+                        const value = info.getValue();
+                        return value != null ? String(value) : '';
+                    }
+                };
+                
+                // ---  為 MOD_DTE 欄位提供特殊設定 ---
+                if (colId === 'MOD_DTE') {
+                    columnDef.cell = info => formatTimestamp(info.getValue());
+                    // 提供自訂的排序函數，確保按日期/時間戳排序
+                    columnDef.sortingFn = 'datetime'; 
+                }
+
+                // TanStack Table 可以自動處理 object 的問題，但如果需要可以自訂
+                columnDef.cell = info => {
+                    const value = info.getValue();
+                    if (value != null) {
+                        if (colId === 'MOD_DTE') return formatTimestamp(value);
+                        if (typeof value === 'object') return JSON.stringify(value);
+                        return String(value);
+                    }
+                    return '';
+                }
+
+                return columnDef;
+            });
+        
+        return [idColumn, ...otherColumns];
+
+    }, [dataColumns]); // 當從 API 獲取的欄位列表變化時，重新計算
+
     const handleApiKeyUpdate = useCallback((key, autoFetched = false) => {
-        setApiKey(key);
-        setShowLoginPrompt(false);
+        setApiKey(key); setShowLoginPrompt(false);
         if (key) {
             localStorage.setItem('gristApiKey', key);
             setStatusMessage(autoFetched ? 'API Key 已與 Grist 會話同步！' : 'API Key 已手動設定。');
@@ -131,17 +168,8 @@ function GristDynamicSelectorViewer() {
         }
     }, []);
 
-    // 啟動時自動獲取 API Key
-    useEffect(() => {
-        setTimeout(() => apiKeyManagerRef.current?.triggerFetchKeyFromProfile(), 100);
-    }, []);
-
-    // 啟動時如果沒有 Key，顯示提示
-    useEffect(() => {
-        if (!apiKey && !localStorage.getItem('gristApiKey')) {
-            setShowLoginPrompt(true);
-        }
-    }, [apiKey]);
+    useEffect(() => { setTimeout(() => apiKeyManagerRef.current?.triggerFetchKeyFromProfile(), 100); }, []);
+    useEffect(() => { if (!apiKey && !localStorage.getItem('gristApiKey')) { setShowLoginPrompt(true); } }, [apiKey]);
     
     const { openLoginPopup } = login({
         onFetchKeyAttempt: () => apiKeyManagerRef.current?.triggerFetchKeyFromProfile(),
@@ -158,25 +186,10 @@ function GristDynamicSelectorViewer() {
                 <p style={styles.subtitle}>API 目標: <code>{GRIST_API_BASE_URL}</code></p>
             </div>
 
-            {statusMessage && (
-                <p style={styles.statusMessage(hasErrorStatus)}>
-                    {hasErrorStatus ? '⚠️ ' : '✅ '}
-                    {isLoading ? '處理中... ' : ''}{statusMessage}
-                </p>
-            )}
-
-            {dataError && (
-                <p style={{...styles.statusMessage(true), marginTop: '15px' }}>
-                    ⚠️ 錯誤: {dataError}
-                </p>
-            )}
+            {statusMessage && <p style={styles.statusMessage(hasErrorStatus)}>{hasErrorStatus ? '⚠️ ' : '✅ '}{isLoading ? '處理中... ' : ''}{statusMessage}</p>}
+            {dataError && <p style={{...styles.statusMessage(true), marginTop: '15px' }}>⚠️ 錯誤: {dataError}</p>}
             
-            <GristApiKeyManager
-                ref={apiKeyManagerRef}
-                apiKey={apiKey}
-                onApiKeyUpdate={handleApiKeyUpdate}
-                onStatusUpdate={setStatusMessage}
-            />
+            <GristApiKeyManager ref={apiKeyManagerRef} apiKey={apiKey} onApiKeyUpdate={handleApiKeyUpdate} onStatusUpdate={setStatusMessage} />
 
             {showLoginPrompt && !apiKey && (
             <div style={{ ...styles.card, textAlign: 'center', backgroundColor: '#fdecea', borderColor: '#dc3545' }}>
@@ -198,7 +211,6 @@ function GristDynamicSelectorViewer() {
                         {documents.map((doc) => (<option key={doc.id} value={doc.id}>{doc.displayName}</option>))}
                     </select>
                 </div>
-
                 {selectedDocId && (
                 <div style={{ marginBottom: '20px' }}>
                     <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>選擇表格:</label>
@@ -209,56 +221,13 @@ function GristDynamicSelectorViewer() {
                 </div>
                 )}
                 
-                {tableData && (
-                <>
-                    <Filter onSubmit={handleFilterChange} isLoading={isLoading} />
-                    
-                    <div style={{ ...styles.card, backgroundColor: '#ffffff', padding: '20px', marginTop: '20px' }}>
-                        <h4 style={{ marginTop: '0', marginBottom: '15px' }}>數據排序選項</h4>
-                        <input 
-                            type="text" 
-                            value={sortQuery} 
-                            onChange={(e) => setSortQuery(e.target.value)} 
-                            placeholder='排序條件 e.g., 欄位ID, -另一個欄位ID' 
-                            style={styles.inputBase}
-                        />
-                         <small style={{display: 'block', marginTop: '8px', color: '#6c757d'}}>輸入欄位 ID 進行排序，加減號 (-) 代表降序。排序會立即生效。</small>
-                    </div>
-                </>
-                )}
+                {tableData && <Filter onSubmit={handleFilterChange} isLoading={isLoading} />}
             </div>
             )}
 
+            {/* --- 【主要變更點 4】: 使用新的 Table 組件 --- */}
             {tableData && tableData.length > 0 && (
-            <div style={styles.tableContainer}>
-                <table style={styles.table}>
-                    <thead>
-                        <tr>
-                            <th style={{ ...styles.th, position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#e9ecef' }}>id</th>
-                            {columns.map((col) => (<th key={col} style={styles.th}>{col}</th>))}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {tableData.map((record, index) => (
-                        <tr key={record.id} style={{ backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8f9fa' }}>
-                            <td style={{ ...styles.td, position: 'sticky', left: 0, zIndex: 1, backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8f9fa', borderRight: '1px solid #dee2e6' }}>{record.id}</td>
-                            {columns.map((col) => {
-                                const value = record.fields?.[col];
-                                const cellContent = col === 'MOD_DTE'
-                                    ? formatTimestamp(value)
-                                    : (value != null ? (typeof value === 'object' ? JSON.stringify(value) : String(value)) : '');
-                                
-                                return (
-                                    <td key={`${record.id}-${col}`} style={styles.td}>
-                                        {cellContent}
-                                    </td>
-                                );
-                            })}
-                        </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+                <Table data={tableData} columns={columns} />
             )}
             
             {tableData && tableData.length === 0 && !isLoading && (
