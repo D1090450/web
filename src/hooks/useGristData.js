@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-// 確保路徑正確
-import { formatTimestamp } from '../utils/formatTimestamp';
+import { formatTimestamp } from '../utils/formatTimestamp'; // 確保路徑正確
 
 // --- 常量 ---
 const GRIST_API_BASE_URL = 'https://tiss-grist.fcuai.tw';
 const TARGET_ORG_DOMAIN = 'fcuai.tw';
 
-// --- 輔助函數：API 請求 ---
+// --- 輔助函數區塊 ---
+
+// 負責發送 API 請求
 const apiRequest = async (endpoint, apiKey, method = 'GET', params = null) => {
     if (!apiKey) return Promise.reject(new Error('API Key 未設定'));
     let url = `${GRIST_API_BASE_URL}${endpoint}`;
@@ -24,45 +25,46 @@ const apiRequest = async (endpoint, apiKey, method = 'GET', params = null) => {
     return responseData;
 };
 
-// --- 【修正點】: 將這兩個函數包含在檔案內，使其可被訪問 ---
-// const applyLocalFilters = (data, filters) => {
-//     if (!filters || !data) return data;
-//     const isDateFilterActive = (filters.dateRange?.start || filters.dateRange?.end || (filters.days && !filters.days.all));
+// 【主要變更點】: `applyLocalFilters` 現在是一個獨立於 Hook 的純函數
+const applyLocalFilters = (data, filters) => {
+    if (!filters || !data) return data;
+    const isDateFilterActive = (filters.dateRange?.start || filters.dateRange?.end || (filters.days && !filters.days.all));
 
-//     return data.filter(record => {
-//         const fields = record.fields || {};
-//         if (isDateFilterActive) {
-//             const timestamp = fields['MOD_DTE'];
-//             if (timestamp == null || typeof timestamp !== 'number') return false;
-//             const recordDate = new Date(timestamp * 1000);
-//             if (isNaN(recordDate.getTime())) return false;
-//             if (filters.dateRange?.start) {
-//                 const startDate = new Date(filters.dateRange.start);
-//                 startDate.setHours(0, 0, 0, 0);
-//                 if (recordDate < startDate) return false;
-//             }
-//             if (filters.dateRange?.end) {
-//                 const endDate = new Date(filters.dateRange.end);
-//                 endDate.setDate(endDate.getDate() + 1);
-//                 endDate.setHours(0, 0, 0, 0);
-//                 if (recordDate >= endDate) return false;
-//             }
-//             if (filters.days && !filters.days.all) {
-//                 const dayMap = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
-//                 const recordDayIndex = recordDate.getDay();
-//                 const selectedDays = Object.keys(filters.days).filter(day => day !== 'all' && filters.days[day]).map(day => dayMap[day]);
-//                 if (selectedDays.length > 0 && !selectedDays.includes(recordDayIndex)) return false;
-//             }
-//         }
-//         if (filters.gender && filters.gender !== 'all') {
-//             if (fields['性別'] !== (filters.gender === 'male' ? '男' : '女')) return false;
-//         }
-//         if (filters.title && filters.title.trim() !== '') {
-//             if (!fields['職稱'] || !String(fields['職稱']).toLowerCase().includes(filters.title.trim().toLowerCase())) return false;
-//         }
-//         return true;
-//     });
-// };
+    return data.filter(record => {
+        const fields = record.fields || {};
+        if (isDateFilterActive) {
+            const timestamp = fields['MOD_DTE'];
+            if (timestamp == null || typeof timestamp !== 'number') return false;
+            const recordDate = new Date(timestamp * 1000);
+            if (isNaN(recordDate.getTime())) return false;
+            if (filters.dateRange?.start) {
+                const startDate = new Date(filters.dateRange.start);
+                startDate.setHours(0, 0, 0, 0);
+                if (recordDate < startDate) return false;
+            }
+            if (filters.dateRange?.end) {
+                const endDate = new Date(filters.dateRange.end);
+                endDate.setDate(endDate.getDate() + 1);
+                endDate.setHours(0, 0, 0, 0);
+                if (recordDate >= endDate) return false;
+            }
+            if (filters.days && !filters.days.all) {
+                const dayMap = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+                const recordDayIndex = recordDate.getDay();
+                const selectedDays = Object.keys(filters.days).filter(day => day !== 'all' && filters.days[day]).map(day => dayMap[day]);
+                if (selectedDays.length > 0 && !selectedDays.includes(recordDayIndex)) return false;
+            }
+        }
+        if (filters.gender && filters.gender !== 'all') {
+            if (fields['性別'] !== (filters.gender === 'male' ? '男' : '女')) return false;
+        }
+        if (filters.title && filters.title.trim() !== '') {
+            if (!fields['職稱'] || !String(fields['職稱']).toLowerCase().includes(filters.title.trim().toLowerCase())) return false;
+        }
+        return true;
+    });
+};
+
 
 // --- 自定義 Hook 主體 ---
 export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthError }) => {
@@ -84,8 +86,9 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         } else {
             setError(err.message);
         }
-    }, []); // 依賴是穩定的，可以為空
+    }, []);
 
+    // 獲取文檔列表
     useEffect(() => {
         if (!apiKey) {
             setDocuments([]);
@@ -113,6 +116,7 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         getOrgAndDocs();
     }, [apiKey, handleApiError]);
 
+    // 獲取表格列表
     useEffect(() => {
         if (!selectedDocId || !apiKey) {
             setTables([]);
@@ -134,6 +138,7 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         fetchTables();
     }, [selectedDocId, apiKey, handleApiError]);
 
+    // 獲取數據和欄位結構
     useEffect(() => {
         if (!selectedTableId || !apiKey) {
             setRawTableData(null);
@@ -162,9 +167,14 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         fetchDataAndSchema();
     }, [selectedTableId, selectedDocId, apiKey, handleApiError]);
 
+    // 動態產生欄位定義
     const tableColumns = useMemo(() => {
         if (!columnSchema) return [];
-        const idColumn = { accessorKey: 'id', header: 'id', enableSorting: false };
+        const idColumn = {
+            accessorKey: 'id',
+            header: 'id',
+            enableSorting: false, // id 通常不需要排序
+        };
         const otherColumns = columnSchema
             .filter(col => !col.fields.isFormula && col.id !== 'id')
             .map(col => {
@@ -183,6 +193,7 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
                 if (colType.startsWith('DateTime') || colType.startsWith('Date')) {
                     columnDef.sortingFn = 'datetime';
                 } else if (colType === 'Numeric' || colType === 'Int') {
+                    // 使用 'alphanumeric' 可以正確處理數字和包含數字的字串
                     columnDef.sortingFn = 'alphanumeric';
                 }
                 return columnDef;
@@ -190,14 +201,17 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         return [idColumn, ...otherColumns];
     }, [columnSchema]);
 
+    // 處理篩選後的數據
     useEffect(() => {
         if (!rawTableData) {
             setProcessedData(null);
             return;
         }
+        // 使用獨立的輔助函數
         setProcessedData(applyLocalFilters(rawTableData, activeFilters));
     }, [rawTableData, activeFilters]);
     
+    // 返回所有需要的狀態和函數
     return {
         isLoading,
         error,
