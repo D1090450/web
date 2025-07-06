@@ -14,7 +14,6 @@ const styles = {
     color: '#333740', fontWeight: '600', borderBottom: '2px solid #dee2e6',
     cursor: 'pointer', userSelect: 'none',
   },
-  // 將 th 的內容包在 div 裡，以便 flexbox 佈局
   thContent: {
     display: 'flex',
     alignItems: 'center',
@@ -25,7 +24,6 @@ const styles = {
     fontSize: '12px',
     opacity: 0.8,
   },
-  // 【新增點】: 為錯誤數據定義樣式
   errorCell: {
     color: 'red',
     fontStyle: 'italic',
@@ -97,8 +95,9 @@ export const Table = ({ data, columns }) => {
                     })
                   }}
                 >
-                  {/* --- 【主要變更點】: 決定如何渲染儲存格內容 --- */}
+                  {/* --- 【UI 決策邏輯】 --- */}
                   {(() => {
+                    // flexRender 會執行我們在 useGristData 中定義的 cell 函數
                     const cellValue = flexRender(cell.column.columnDef.cell, cell.getContext());
 
                     // 檢查是否是我們定義的錯誤物件
@@ -112,7 +111,7 @@ export const Table = ({ data, columns }) => {
                     }
                     
                     // 正常渲染
-                    return cellValue;
+                    return String(cellValue ?? '');
                   })()}
                 </td>
               ))}

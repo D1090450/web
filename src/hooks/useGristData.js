@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { formatTimestamp } from '../utils/formatTimestamp';
 
 const GRIST_API_BASE_URL = 'https://tiss-grist.fcuai.tw';
 const TARGET_ORG_DOMAIN = 'fcuai.tw';
 
-// --- 輔助函數: API 請求 ---
+// --- 輔助函數 ---
 const apiRequest = async (endpoint, apiKey, method = 'GET', params = null) => {
+    // ... 內部邏輯不變 ...
     if (!apiKey) return Promise.reject(new Error('API Key 未設定'));
     let url = `${GRIST_API_BASE_URL}${endpoint}`;
     if (params) {
@@ -22,8 +23,8 @@ const apiRequest = async (endpoint, apiKey, method = 'GET', params = null) => {
     return responseData;
 };
 
-// --- 輔助函數: 本地篩選 ---
 const applyLocalFilters = (data, filters) => {
+    // ... 內部邏輯不變 ...
     if (!filters || !data) return data;
     const isDateFilterActive = (filters.dateRange?.start || filters.dateRange?.end || (filters.days && !filters.days.all));
 
@@ -82,21 +83,16 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         } else {
             setError(err.message);
         }
-    }, [onAuthErrorRef]); // 【修正點】: 添加依賴以符合 ESLint 規則並確保引用最新
+    }, []);
 
     // 獲取文檔列表
     useEffect(() => {
-        // 【修正點】: 更明確的狀態清理
         if (!apiKey) {
-            setDocuments([]);
-            setTables([]);
-            setColumnSchema(null);
-            setRawTableData(null);
+            setDocuments([]); setTables([]); setColumnSchema(null); setRawTableData(null);
             return;
         }
         const getOrgAndDocs = async () => {
-            setIsLoading(true);
-            setError('');
+            setIsLoading(true); setError('');
             try {
                 const orgsData = await apiRequest('/api/orgs', apiKey);
                 const determinedOrg = (Array.isArray(orgsData) && orgsData.length > 0) ? (orgsData.find(org => org.domain === TARGET_ORG_DOMAIN) || orgsData[0]) : (orgsData?.id ? orgsData : null);
@@ -106,34 +102,20 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
                 workspaces.forEach(ws => { ws.docs?.forEach(doc => { docNameCounts[doc.name] = (docNameCounts[doc.name] || 0) + 1; allDocs.push({ ...doc, workspaceName: ws.name }); }); });
                 const processedDocs = allDocs.map(doc => ({ ...doc, displayName: docNameCounts[doc.name] > 1 ? `${doc.name} (${doc.workspaceName})` : doc.name }));
                 setDocuments(processedDocs);
-            } catch (err) {
-                handleApiError(err);
-                setDocuments([]);
-            } finally {
-                setIsLoading(false);
-            }
+            } catch (err) { handleApiError(err); setDocuments([]); } finally { setIsLoading(false); }
         };
         getOrgAndDocs();
     }, [apiKey, handleApiError]);
 
     // 獲取表格列表
     useEffect(() => {
-        if (!selectedDocId || !apiKey) {
-            setTables([]);
-            return;
-        }
+        if (!selectedDocId || !apiKey) { setTables([]); return; }
         const fetchTables = async () => {
-            setIsLoading(true);
-            setError('');
+            setIsLoading(true); setError('');
             try {
                 const data = await apiRequest(`/api/docs/${selectedDocId}/tables`, apiKey);
                 setTables((data.tables || []).map(t => ({ id: t.id, name: t.id })));
-            } catch (err) {
-                handleApiError(err);
-                setTables([]);
-            } finally {
-                setIsLoading(false);
-            }
+            } catch (err) { handleApiError(err); setTables([]); } finally { setIsLoading(false); }
         };
         fetchTables();
     }, [selectedDocId, apiKey, handleApiError]);
@@ -141,14 +123,10 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
     // 獲取數據和欄位結構
     useEffect(() => {
         if (!selectedTableId || !selectedDocId || !apiKey) {
-            setRawTableData(null);
-            setColumnSchema(null);
-            return;
+            setRawTableData(null); setColumnSchema(null); return;
         }
         const fetchDataAndSchema = async () => {
-            setIsLoading(true);
-            setError('');
-            setActiveFilters(null);
+            setIsLoading(true); setError(''); setActiveFilters(null);
             try {
                 const [recordsResponse, columnsResponse] = await Promise.all([
                     apiRequest(`/api/docs/${selectedDocId}/tables/${selectedTableId}/records`, apiKey, 'GET', { limit: '200' }),
@@ -156,13 +134,7 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
                 ]);
                 setRawTableData(recordsResponse.records);
                 setColumnSchema(columnsResponse.columns);
-            } catch (err) {
-                handleApiError(err);
-                setRawTableData(null);
-                setColumnSchema(null);
-            } finally {
-                setIsLoading(false);
-            }
+            } catch (err) { handleApiError(err); setRawTableData(null); setColumnSchema(null); } finally { setIsLoading(false); }
         };
         fetchDataAndSchema();
     }, [selectedTableId, selectedDocId, apiKey, handleApiError]);
@@ -180,23 +152,14 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
                     header: colLabel || colId,
                 };
                 if (colType.startsWith('DateTime') || colType.startsWith('Date')) {
-                    columnDef.cell = info => {
-                        const value = info.getValue();
-                        try {
-                            return formatTimestamp(value);
-                        } catch (e) {
-                            return <span style={{ color: 'red', fontStyle: 'italic' }}>{String(value ?? '')}</span>;
-                        }
-                    };
+                    // 【修正點】: 只返回 formatTimestamp 的結果，不包含任何 JSX
+                    columnDef.cell = info => formatTimestamp(info.getValue());
                     columnDef.sortingFn = 'datetime';
                 } else if (colType === 'Numeric' || colType === 'Int') {
                     columnDef.sortingFn = 'alphanumeric';
-                    columnDef.cell = info => String(info.getValue() ?? '');
+                    columnDef.cell = info => info.getValue();
                 } else {
-                    columnDef.cell = info => {
-                        const value = info.getValue();
-                        return value != null ? (typeof value === 'object' ? JSON.stringify(value) : String(value)) : '';
-                    };
+                    columnDef.cell = info => info.getValue();
                 }
                 return columnDef;
             });
@@ -205,10 +168,7 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
 
     // 處理篩選後的數據
     useEffect(() => {
-        if (!rawTableData) {
-            setProcessedData(null);
-            return;
-        }
+        if (!rawTableData) { setProcessedData(null); return; }
         setProcessedData(applyLocalFilters(rawTableData, activeFilters));
     }, [rawTableData, activeFilters]);
     
