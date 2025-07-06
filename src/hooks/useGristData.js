@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { formatTimestamp } from '../utils/formatTimestamp'; // 確保路徑正確
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { formatTimestamp } from '../utils/formatTimestamp';
 
 // --- 常量 ---
 const GRIST_API_BASE_URL = 'https://tiss-grist.fcuai.tw';
 const TARGET_ORG_DOMAIN = 'fcuai.tw';
 
-// --- 輔助函數 (保持不變) ---
+// --- 輔助函數區塊 (保持不變) ---
 const apiRequest = async (endpoint, apiKey, method = 'GET', params = null) => {
     // ... 內部邏輯不變 ...
 };
@@ -35,7 +35,7 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         }
     }, []);
 
-    // 獲取文檔和表格列表的 useEffects (保持不變)
+    // 獲取文檔、表格、數據和結構的 useEffects (保持不變)
     useEffect(() => {
         // ... 獲取文檔列表邏輯 ...
     }, [apiKey, handleApiError]);
@@ -45,6 +45,7 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
     useEffect(() => {
         // ... 獲取數據和欄位結構邏輯 ...
     }, [selectedTableId, selectedDocId, apiKey, handleApiError]);
+
 
     // --- 【主要變更點】: 動態產生欄位定義的 useMemo ---
     const tableColumns = useMemo(() => {
@@ -67,34 +68,18 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
                 
                 // --- 根據欄位類型自動指派行為 ---
                 if (colType.startsWith('DateTime') || colType.startsWith('Date')) {
-                    // --- 這是核心修改部分 ---
-                    columnDef.cell = info => {
-                        const value = info.getValue();
-                        try {
-                            // 嘗試格式化
-                            return formatTimestamp(value);
-                        } catch (e) {
-                            // 如果格式化失敗，以紅色文字顯示原始值
-                            return (
-                                <span style={{ color: 'red', fontStyle: 'italic' }}>
-                                    {String(value)}
-                                </span>
-                            );
-                        }
-                    };
+                    // 只進行數據轉換，不決定 UI
+                    columnDef.cell = info => formatTimestamp(info.getValue());
                     columnDef.sortingFn = 'datetime';
+
                 } else if (colType === 'Numeric' || colType === 'Int') {
                     columnDef.sortingFn = 'alphanumeric';
-                    columnDef.cell = info => {
-                        const value = info.getValue();
-                        return value != null ? String(value) : '';
-                    };
+                    // 返回原始值，讓 Table 組件處理
+                    columnDef.cell = info => info.getValue();
+
                 } else {
-                    // 預設的儲存格渲染
-                    columnDef.cell = info => {
-                        const value = info.getValue();
-                        return value != null ? (typeof value === 'object' ? JSON.stringify(value) : String(value)) : '';
-                    };
+                    // 返回原始值
+                    columnDef.cell = info => info.getValue();
                 }
                 
                 return columnDef;
@@ -102,7 +87,8 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         
         return [idColumn, ...otherColumns];
 
-    }, [columnSchema]); // 當欄位結構變化時，重新計算
+    }, [columnSchema]);
+
 
     // 處理篩選後的數據 (保持不變)
     useEffect(() => {
@@ -123,6 +109,7 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         handleFilterChange: setActiveFilters,
     };
 };
+
 
 // 為了讓您能直接複製，這裡也附上省略的邏輯
 // 請用下面的完整程式碼替換您的檔案
@@ -210,23 +197,13 @@ const FullUseGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthError 
                     header: colLabel || colId,
                 };
                 if (colType.startsWith('DateTime') || colType.startsWith('Date')) {
-                    columnDef.cell = info => {
-                        const value = info.getValue();
-                        try {
-                            return formatTimestamp(value);
-                        } catch (e) {
-                            return <span style={{ color: 'red', fontStyle: 'italic' }}>{String(value ?? '')}</span>;
-                        }
-                    };
+                    columnDef.cell = info => formatTimestamp(info.getValue());
                     columnDef.sortingFn = 'datetime';
                 } else if (colType === 'Numeric' || colType === 'Int') {
                     columnDef.sortingFn = 'alphanumeric';
-                    columnDef.cell = info => String(info.getValue() ?? '');
+                    columnDef.cell = info => info.getValue();
                 } else {
-                    columnDef.cell = info => {
-                        const value = info.getValue();
-                        return value != null ? (typeof value === 'object' ? JSON.stringify(value) : String(value)) : '';
-                    };
+                    columnDef.cell = info => info.getValue();
                 }
                 return columnDef;
             });
