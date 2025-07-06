@@ -25,44 +25,44 @@ const apiRequest = async (endpoint, apiKey, method = 'GET', params = null) => {
 };
 
 // --- 【修正點】: 將這兩個函數包含在檔案內，使其可被訪問 ---
-const applyLocalFilters = (data, filters) => {
-    if (!filters || !data) return data;
-    const isDateFilterActive = (filters.dateRange?.start || filters.dateRange?.end || (filters.days && !filters.days.all));
+// const applyLocalFilters = (data, filters) => {
+//     if (!filters || !data) return data;
+//     const isDateFilterActive = (filters.dateRange?.start || filters.dateRange?.end || (filters.days && !filters.days.all));
 
-    return data.filter(record => {
-        const fields = record.fields || {};
-        if (isDateFilterActive) {
-            const timestamp = fields['MOD_DTE'];
-            if (timestamp == null || typeof timestamp !== 'number') return false;
-            const recordDate = new Date(timestamp * 1000);
-            if (isNaN(recordDate.getTime())) return false;
-            if (filters.dateRange?.start) {
-                const startDate = new Date(filters.dateRange.start);
-                startDate.setHours(0, 0, 0, 0);
-                if (recordDate < startDate) return false;
-            }
-            if (filters.dateRange?.end) {
-                const endDate = new Date(filters.dateRange.end);
-                endDate.setDate(endDate.getDate() + 1);
-                endDate.setHours(0, 0, 0, 0);
-                if (recordDate >= endDate) return false;
-            }
-            if (filters.days && !filters.days.all) {
-                const dayMap = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
-                const recordDayIndex = recordDate.getDay();
-                const selectedDays = Object.keys(filters.days).filter(day => day !== 'all' && filters.days[day]).map(day => dayMap[day]);
-                if (selectedDays.length > 0 && !selectedDays.includes(recordDayIndex)) return false;
-            }
-        }
-        if (filters.gender && filters.gender !== 'all') {
-            if (fields['性別'] !== (filters.gender === 'male' ? '男' : '女')) return false;
-        }
-        if (filters.title && filters.title.trim() !== '') {
-            if (!fields['職稱'] || !String(fields['職稱']).toLowerCase().includes(filters.title.trim().toLowerCase())) return false;
-        }
-        return true;
-    });
-};
+//     return data.filter(record => {
+//         const fields = record.fields || {};
+//         if (isDateFilterActive) {
+//             const timestamp = fields['MOD_DTE'];
+//             if (timestamp == null || typeof timestamp !== 'number') return false;
+//             const recordDate = new Date(timestamp * 1000);
+//             if (isNaN(recordDate.getTime())) return false;
+//             if (filters.dateRange?.start) {
+//                 const startDate = new Date(filters.dateRange.start);
+//                 startDate.setHours(0, 0, 0, 0);
+//                 if (recordDate < startDate) return false;
+//             }
+//             if (filters.dateRange?.end) {
+//                 const endDate = new Date(filters.dateRange.end);
+//                 endDate.setDate(endDate.getDate() + 1);
+//                 endDate.setHours(0, 0, 0, 0);
+//                 if (recordDate >= endDate) return false;
+//             }
+//             if (filters.days && !filters.days.all) {
+//                 const dayMap = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+//                 const recordDayIndex = recordDate.getDay();
+//                 const selectedDays = Object.keys(filters.days).filter(day => day !== 'all' && filters.days[day]).map(day => dayMap[day]);
+//                 if (selectedDays.length > 0 && !selectedDays.includes(recordDayIndex)) return false;
+//             }
+//         }
+//         if (filters.gender && filters.gender !== 'all') {
+//             if (fields['性別'] !== (filters.gender === 'male' ? '男' : '女')) return false;
+//         }
+//         if (filters.title && filters.title.trim() !== '') {
+//             if (!fields['職稱'] || !String(fields['職稱']).toLowerCase().includes(filters.title.trim().toLowerCase())) return false;
+//         }
+//         return true;
+//     });
+// };
 
 // --- 自定義 Hook 主體 ---
 export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthError }) => {
