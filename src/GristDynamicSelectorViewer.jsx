@@ -4,8 +4,7 @@ import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { login } from './login';
 import Filter from './components/Filter';
 import { useGristData } from './hooks/useGristData';
-import { formatTimestamp } from './utils/formatTimestamp';
-import { Table } from './components/Table'; // 導入新的 Table 組件
+import { Table } from './components/Table'; 
 
 const GRIST_API_BASE_URL = 'https://tiss-grist.fcuai.tw';
 
@@ -48,7 +47,6 @@ const styles = {
 
 // API Key 管理組件保持不變
 const GristApiKeyManager = React.forwardRef(({ apiKey, onApiKeyUpdate, onStatusUpdate }, ref) => {
-    // ... 內部程式碼完全不變 ...
     const [localApiKey, setLocalApiKey] = useState(apiKey || '');
     useEffect(() => { setLocalApiKey(apiKey || ''); }, [apiKey]);
     const fetchKeyFromProfile = useCallback(async () => {
@@ -91,12 +89,13 @@ function GristDynamicSelectorViewer() {
     const [selectedTableId, setSelectedTableId] = useState('');
     const apiKeyManagerRef = useRef(null);
 
+    // --- 所有數據邏輯都已封裝在 useGristData Hook 中 ---
     const {
         isLoading,
         error: dataError,
         documents,
         tables,
-        columns: dataColumns,
+        columns, // 直接獲取 TanStack Table 需要的欄位定義
         tableData,
         handleFilterChange,
     } = useGristData({
@@ -110,53 +109,6 @@ function GristDynamicSelectorViewer() {
             setStatusMessage('API Key 已失效或權限不足，請重新登入 Grist 並刷新頁面，或手動設定。');
         }
     });
-
-    const columns = useMemo(() => {
-        if (!dataColumns || dataColumns.length === 0) return [];
-
-        // 固定 id 欄位在最前面
-        const idColumn = {
-            accessorKey: 'id',
-            header: 'id',
-        };
-
-        const otherColumns = dataColumns
-            .filter(colId => colId !== 'id') // 確保不重複
-            .map(colId => {
-                const columnDef = {
-                    accessorKey: `fields.${colId}`, // 讓 TanStack Table 能深入讀取 fields 物件
-                    header: colId,
-                    // 預設的儲存格渲染
-                    cell: info => {
-                        const value = info.getValue();
-                        return value != null ? String(value) : '';
-                    }
-                };
-                
-                // ---  為 MOD_DTE 欄位提供特殊設定 ---
-                if (colId === 'MOD_DTE') {
-                    columnDef.cell = info => formatTimestamp(info.getValue());
-                    // 提供自訂的排序函數，確保按日期/時間戳排序
-                    columnDef.sortingFn = 'datetime'; 
-                }
-
-                // TanStack Table 可以自動處理 object 的問題，但如果需要可以自訂
-                columnDef.cell = info => {
-                    const value = info.getValue();
-                    if (value != null) {
-                        if (colId === 'MOD_DTE') return formatTimestamp(value);
-                        if (typeof value === 'object') return JSON.stringify(value);
-                        return String(value);
-                    }
-                    return '';
-                }
-
-                return columnDef;
-            });
-        
-        return [idColumn, ...otherColumns];
-
-    }, [dataColumns]); // 當從 API 獲取的欄位列表變化時，重新計算
 
     const handleApiKeyUpdate = useCallback((key, autoFetched = false) => {
         setApiKey(key); setShowLoginPrompt(false);
@@ -221,11 +173,14 @@ function GristDynamicSelectorViewer() {
                 </div>
                 )}
                 
+                {/* 只有在有數據時才顯示篩選器 */}
+                {/* 手動排序框已被移除，排序功能整合進表格標題的點擊事件中 */}
                 {tableData && <Filter onSubmit={handleFilterChange} isLoading={isLoading} />}
             </div>
             )}
 
-            {/* --- 【主要變更點 4】: 使用新的 Table 組件 --- */}
+            {/* --- 使用新的 Table 組件渲染表格 --- */}
+            {/* 排序功能現在由 Table 組件內部處理 (點擊表頭) */}
             {tableData && tableData.length > 0 && (
                 <Table data={tableData} columns={columns} />
             )}
