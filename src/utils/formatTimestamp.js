@@ -1,28 +1,28 @@
 /**
  * 將 Unix timestamp 格式化為 'YYYY-MM-DD HH:mm:ss' 格式的字串。
- * @param {number | null | undefined} timestamp - 以秒為單位的 Unix timestamp。
- * @returns {string} 格式化後的日期字串，如果輸入無效則返回空字串或'無效日期'。
+ * 如果輸入無效，則會拋出一個錯誤。
+ * @param {any} timestamp - 期望是以秒為單位的 Unix timestamp。
+ * @returns {string} 格式化後的日期字串。
+ * @throws {Error} 當 timestamp 不是有效的數字或無法轉換為有效日期時拋出。
  */
 export const formatTimestamp = (timestamp) => {
-    // 檢查輸入是否為有效的數字
+    // 【主要變更點 1】: 嚴格檢查輸入類型
     if (timestamp == null || typeof timestamp !== 'number') {
-        return '';
+        throw new Error("Invalid input: timestamp must be a number.");
     }
 
     // 將 Unix timestamp (假設是秒) 轉換為 JavaScript 需要的毫秒
-    // 如果您的 timestamp 本身就是毫秒，請移除 "* 1000"
     const date = new Date(timestamp * 1000);
 
-    // 檢查轉換後的日期是否有效
+    // 【主要變更點 2】: 檢查轉換後的日期是否有效
     if (isNaN(date.getTime())) {
-        return '無效日期';
+        throw new Error("Invalid timestamp value: cannot be converted to a valid date.");
     }
 
-    // 輔助函數，確保數字是兩位數 (例如 1 -> "01")
     const pad = (num) => String(num).padStart(2, '0');
 
     const year = date.getFullYear();
-    const month = pad(date.getMonth() + 1); // 月份是從 0 開始的
+    const month = pad(date.getMonth() + 1);
     const day = pad(date.getDate());
     const hours = pad(date.getHours());
     const minutes = pad(date.getMinutes());
