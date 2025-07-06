@@ -7,7 +7,6 @@ const TARGET_ORG_DOMAIN = 'fcuai.tw';
 
 // --- 輔助函數區塊 ---
 
-// 負責發送 API 請求
 const apiRequest = async (endpoint, apiKey, method = 'GET', params = null) => {
     if (!apiKey) return Promise.reject(new Error('API Key 未設定'));
     let url = `${GRIST_API_BASE_URL}${endpoint}`;
@@ -25,7 +24,6 @@ const apiRequest = async (endpoint, apiKey, method = 'GET', params = null) => {
     return responseData;
 };
 
-// 【主要變更點】: `applyLocalFilters` 現在是一個獨立於 Hook 的純函數
 const applyLocalFilters = (data, filters) => {
     if (!filters || !data) return data;
     const isDateFilterActive = (filters.dateRange?.start || filters.dateRange?.end || (filters.days && !filters.days.all));
@@ -90,13 +88,9 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
 
     // 獲取文檔列表
     useEffect(() => {
-        if (!apiKey) {
-            setDocuments([]);
-            return;
-        }
+        if (!apiKey) { setDocuments([]); return; }
         const getOrgAndDocs = async () => {
-            setIsLoading(true);
-            setError('');
+            setIsLoading(true); setError('');
             try {
                 const orgsData = await apiRequest('/api/orgs', apiKey);
                 const determinedOrg = (Array.isArray(orgsData) && orgsData.length > 0) ? (orgsData.find(org => org.domain === TARGET_ORG_DOMAIN) || orgsData[0]) : (orgsData?.id ? orgsData : null);
@@ -106,34 +100,20 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
                 workspaces.forEach(ws => { ws.docs?.forEach(doc => { docNameCounts[doc.name] = (docNameCounts[doc.name] || 0) + 1; allDocs.push({ ...doc, workspaceName: ws.name }); }); });
                 const processedDocs = allDocs.map(doc => ({ ...doc, displayName: docNameCounts[doc.name] > 1 ? `${doc.name} (${doc.workspaceName})` : doc.name }));
                 setDocuments(processedDocs);
-            } catch (err) {
-                handleApiError(err);
-                setDocuments([]);
-            } finally {
-                setIsLoading(false);
-            }
+            } catch (err) { handleApiError(err); setDocuments([]); } finally { setIsLoading(false); }
         };
         getOrgAndDocs();
     }, [apiKey, handleApiError]);
 
     // 獲取表格列表
     useEffect(() => {
-        if (!selectedDocId || !apiKey) {
-            setTables([]);
-            return;
-        }
+        if (!selectedDocId || !apiKey) { setTables([]); return; }
         const fetchTables = async () => {
-            setIsLoading(true);
-            setError('');
+            setIsLoading(true); setError('');
             try {
                 const data = await apiRequest(`/api/docs/${selectedDocId}/tables`, apiKey);
                 setTables((data.tables || []).map(t => ({ id: t.id, name: t.id })));
-            } catch (err) {
-                handleApiError(err);
-                setTables([]);
-            } finally {
-                setIsLoading(false);
-            }
+            } catch (err) { handleApiError(err); setTables([]); } finally { setIsLoading(false); }
         };
         fetchTables();
     }, [selectedDocId, apiKey, handleApiError]);
@@ -141,14 +121,10 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
     // 獲取數據和欄位結構
     useEffect(() => {
         if (!selectedTableId || !apiKey) {
-            setRawTableData(null);
-            setColumnSchema(null);
-            return;
+            setRawTableData(null); setColumnSchema(null); return;
         }
         const fetchDataAndSchema = async () => {
-            setIsLoading(true);
-            setError('');
-            setActiveFilters(null);
+            setIsLoading(true); setError(''); setActiveFilters(null);
             try {
                 const [recordsResponse, columnsResponse] = await Promise.all([
                     apiRequest(`/api/docs/${selectedDocId}/tables/${selectedTableId}/records`, apiKey, 'GET', { limit: '200' }),
@@ -156,13 +132,7 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
                 ]);
                 setRawTableData(recordsResponse.records);
                 setColumnSchema(columnsResponse.columns);
-            } catch (err) {
-                handleApiError(err);
-                setRawTableData(null);
-                setColumnSchema(null);
-            } finally {
-                setIsLoading(false);
-            }
+            } catch (err) { handleApiError(err); setRawTableData(null); setColumnSchema(null); } finally { setIsLoading(false); }
         };
         fetchDataAndSchema();
     }, [selectedTableId, selectedDocId, apiKey, handleApiError]);
@@ -170,34 +140,58 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
     // 動態產生欄位定義
     const tableColumns = useMemo(() => {
         if (!columnSchema) return [];
-        const idColumn = {
-            accessorKey: 'id',
-            header: 'id',
-            enableSorting: false, // id 通常不需要排序
-        };
+        const idColumn = { accessorKey: 'id', header: 'id', enableSorting: false };
+
         const otherColumns = columnSchema
             .filter(col => !col.fields.isFormula && col.id !== 'id')
             .map(col => {
                 const { id: colId, fields: { type: colType, label: colLabel } } = col;
+                
                 const columnDef = {
                     accessorKey: `fields.${colId}`,
                     header: colLabel || colId,
+                    // --- 【主要修改點】: 在 cell 渲染函數中加入類型檢查 ---
                     cell: info => {
                         const value = info.getValue();
+                        
+                        // 處理 null 或 undefined 的情況
+                        if (value == null) return '';
+
+                        // 檢查 DateTime 和 Date 類型
                         if (colType.startsWith('DateTime') || colType.startsWith('Date')) {
-                            return formatTimestamp(value);
+                            // 格式正確，是數字 (timestamp)
+                            if (typeof value === 'number') {
+                                return formatTimestamp(value);
+                            }
+                            // 格式不符，以紅色文字顯示原始值
+                            return <span style={{ color: 'red' }}>{String(value)}</span>;
                         }
-                        return value != null ? (typeof value === 'object' ? JSON.stringify(value) : String(value)) : '';
+
+                        // 檢查 Numeric 和 Int 類型
+                        if (colType === 'Numeric' || colType === 'Int') {
+                            // 格式正確，是數字
+                            if (typeof value === 'number') {
+                                return String(value);
+                            }
+                            // 格式不符，以紅色文字顯示原始值
+                            return <span style={{ color: 'red' }}>{String(value)}</span>;
+                        }
+                        
+                        // 處理其他類型 (如 Text)
+                        return typeof value === 'object' ? JSON.stringify(value) : String(value);
                     }
                 };
+                
+                // 根據類型設定排序函數
                 if (colType.startsWith('DateTime') || colType.startsWith('Date')) {
                     columnDef.sortingFn = 'datetime';
                 } else if (colType === 'Numeric' || colType === 'Int') {
-                    // 使用 'alphanumeric' 可以正確處理數字和包含數字的字串
                     columnDef.sortingFn = 'alphanumeric';
                 }
+                
                 return columnDef;
             });
+        
         return [idColumn, ...otherColumns];
     }, [columnSchema]);
 
@@ -207,7 +201,6 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
             setProcessedData(null);
             return;
         }
-        // 使用獨立的輔助函數
         setProcessedData(applyLocalFilters(rawTableData, activeFilters));
     }, [rawTableData, activeFilters]);
     
