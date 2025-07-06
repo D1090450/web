@@ -1,4 +1,4 @@
-import React from 'react';
+import React from 'react'; // 導入 React 以便使用 React.isValidElement
 import {
   useReactTable,
   getCoreRowModel,
@@ -95,22 +95,26 @@ export const Table = ({ data, columns }) => {
                     })
                   }}
                 >
-                  {/* --- 【UI 決策邏輯】 --- */}
+                  {/* --- 【修正點】: 更健壯的渲染邏輯 --- */}
                   {(() => {
-                    // flexRender 會執行我們在 useGristData 中定義的 cell 函數
                     const cellValue = flexRender(cell.column.columnDef.cell, cell.getContext());
 
-                    // 檢查是否是我們定義的錯誤物件
+                    // 1. 檢查是否是有效的 React 元素 (JSX)，如果是，直接渲染
+                    if (React.isValidElement(cellValue)) {
+                      return cellValue;
+                    }
+
+                    // 2. 檢查是否是我們自訂的錯誤物件
                     if (cellValue && typeof cellValue === 'object' && cellValue.error === true) {
                       return <span style={styles.errorCell}>{String(cellValue.value ?? '')}</span>;
                     }
                     
-                    // 檢查是否是其他物件類型 (例如 Grist 的 Reference [L, 1])
+                    // 3. 檢查是否是其他物件類型 (例如 Grist 的 Reference [L, 1])
                     if (cellValue && typeof cellValue === 'object') {
                       return JSON.stringify(cellValue);
                     }
                     
-                    // 正常渲染
+                    // 4. 對於所有其他情況 (字串、數字、null、undefined)，正常渲染
                     return String(cellValue ?? '');
                   })()}
                 </td>
