@@ -1,6 +1,6 @@
-import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 
-// --- 更新後的 import ---
+// --- Imports ---
 import { login } from './login';
 import Filter from './components/Filter';
 import { useGristData } from './hooks/useGristData';
@@ -89,14 +89,19 @@ function GristDynamicSelectorViewer() {
     const [selectedTableId, setSelectedTableId] = useState('');
     const apiKeyManagerRef = useRef(null);
 
-    // --- 所有數據邏輯都已封裝在 useGristData Hook 中 ---
+    // --- 【主要變更點 1】: 從 useGristData 獲取所有與表格相關的狀態和函數 ---
     const {
         isLoading,
         error: dataError,
         documents,
         tables,
-        columns, // 直接獲取 TanStack Table 需要的欄位定義
-        tableData,
+        columns,
+        pageData, // 注意：現在是 pageData，而不是 tableData
+        totalRecords,
+        pagination,
+        setPagination,
+        sorting,
+        setSorting,
         handleFilterChange,
     } = useGristData({
         apiKey,
@@ -110,6 +115,10 @@ function GristDynamicSelectorViewer() {
         }
     });
 
+    // 計算總頁數
+    const pageCount = Math.ceil(totalRecords / pagination.pageSize);
+
+    // 其他 Hooks 保持不變
     const handleApiKeyUpdate = useCallback((key, autoFetched = false) => {
         setApiKey(key); setShowLoginPrompt(false);
         if (key) {
@@ -173,20 +182,27 @@ function GristDynamicSelectorViewer() {
                 </div>
                 )}
                 
-                {/* 只有在有數據時才顯示篩選器 */}
-                {/* 手動排序框已被移除，排序功能整合進表格標題的點擊事件中 */}
-                {tableData && <Filter onSubmit={handleFilterChange} isLoading={isLoading} />}
+                {/* 只有在選定表格後才顯示篩選器 */}
+                {selectedTableId && <Filter onSubmit={handleFilterChange} isLoading={isLoading} />}
             </div>
             )}
 
-            {/* --- 使用新的 Table 組件渲染表格 --- */}
-            {/* 排序功能現在由 Table 組件內部處理 (點擊表頭) */}
-            {tableData && tableData.length > 0 && (
-                <Table data={tableData} columns={columns} />
+            {/* --- 【主要變更點 2】: 將所有需要的 props 傳遞給 Table 組件 --- */}
+            {selectedTableId && !dataError && (
+                <Table 
+                  data={pageData} 
+                  columns={columns}
+                  pageCount={pageCount}
+                  pagination={pagination}
+                  setPagination={setPagination}
+                  sorting={sorting}
+                  setSorting={setSorting}
+                />
             )}
             
-            {tableData && tableData.length === 0 && !isLoading && (
-              <p style={{textAlign: 'center', ...styles.card, marginTop: '20px'}}>篩選結果為空。</p>
+            {/* 當有數據但篩選結果為空時的提示 */}
+            {pageData && pageData.length === 0 && !isLoading && !dataError && (
+              <p style={{textAlign: 'center', ...styles.card, marginTop: '20px'}}>找不到符合條件的記錄。</p>
             )}
         </div>
     );
