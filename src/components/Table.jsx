@@ -6,6 +6,7 @@ import {
   flexRender,
 } from '@tanstack/react-table';
 
+// --- 【主要變更點 1】: 修改表頭樣式 ---
 const styles = {
   tableContainer: { marginTop: '30px', overflowX: 'auto', border: '1px solid #dee2e6', borderRadius: '6px' },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: '14px' },
@@ -13,20 +14,16 @@ const styles = {
     backgroundColor: '#e9ecef', padding: '14px 12px', textAlign: 'left',
     color: '#333740', fontWeight: '600', borderBottom: '2px solid #dee2e6',
     cursor: 'pointer', userSelect: 'none',
-  },
-  thContent: {
+    // 讓表頭成為 Flex 容器
     display: 'flex',
     alignItems: 'center',
-    gap: '4px',
+    gap: '4px', // 在標題和箭頭之間增加一點間距
   },
   td: { padding: '12px', whiteSpace: 'nowrap', color: '#555e6d', borderBottom: '1px solid #dee2e6' },
+  // 為箭頭定義一個樣式
   sortIcon: {
     fontSize: '12px',
     opacity: 0.8,
-  },
-  errorCell: {
-    color: 'red',
-    fontStyle: 'italic',
   }
 };
 
@@ -54,12 +51,15 @@ export const Table = ({ data, columns }) => {
                 <th
                   key={header.id}
                   style={{
-                    ...styles.th,
                     ...(header.id === 'id' && { position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#e9ecef' }),
+                    // 覆蓋 flex 樣式，因為 id 欄位不需要點擊排序
+                    ...(header.column.getCanSort() === false && { display: 'table-cell' })
                   }}
+                  // 只有在可以排序時才添加 onClick
                   onClick={header.column.getCanSort() ? header.column.getToggleSortingHandler() : undefined}
                 >
-                  <div style={styles.thContent}>
+                  {/* --- 【主要變更點 2】: 調整渲染結構 --- */}
+                  <div style={styles.th}>
                     {header.isPlaceholder
                       ? null
                       : flexRender(
@@ -95,29 +95,7 @@ export const Table = ({ data, columns }) => {
                     })
                   }}
                 >
-                  {/* --- 【修正點】: 徹底修正渲染邏輯 --- */}
-                  {(() => {
-                    const cellValue = flexRender(cell.column.columnDef.cell, cell.getContext());
-
-                    // 1. 檢查是否是我們自訂的錯誤物件
-                    if (cellValue && typeof cellValue === 'object' && cellValue.error === true) {
-                      return <span style={styles.errorCell}>{String(cellValue.value ?? '')}</span>;
-                    }
-
-                    // 2. 檢查是否是有效的 React 元素 (JSX)
-                    // 這個檢查現在放到了錯誤物件檢查之後
-                    if (React.isValidElement(cellValue)) {
-                      return cellValue;
-                    }
-                    
-                    // 3. 檢查是否是其他普通物件類型
-                    if (cellValue && typeof cellValue === 'object') {
-                      return JSON.stringify(cellValue);
-                    }
-                    
-                    // 4. 對於所有其他情況 (字串、數字、null、undefined)，轉為字串後渲染
-                    return String(cellValue ?? '');
-                  })()}
+                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
                 </td>
               ))}
             </tr>
