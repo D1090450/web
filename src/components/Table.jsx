@@ -1,4 +1,4 @@
-import React from 'react'; // 導入 React 以便使用 React.isValidElement
+import React from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -95,26 +95,27 @@ export const Table = ({ data, columns }) => {
                     })
                   }}
                 >
-                  {/* --- 【修正點】: 更健壯的渲染邏輯 --- */}
+                  {/* --- 【修正點】: 徹底修正渲染邏輯 --- */}
                   {(() => {
                     const cellValue = flexRender(cell.column.columnDef.cell, cell.getContext());
 
-                    // 1. 檢查是否是有效的 React 元素 (JSX)，如果是，直接渲染
-                    if (React.isValidElement(cellValue)) {
-                      return cellValue;
-                    }
-
-                    // 2. 檢查是否是我們自訂的錯誤物件
+                    // 1. 檢查是否是我們自訂的錯誤物件
                     if (cellValue && typeof cellValue === 'object' && cellValue.error === true) {
                       return <span style={styles.errorCell}>{String(cellValue.value ?? '')}</span>;
                     }
+
+                    // 2. 檢查是否是有效的 React 元素 (JSX)
+                    // 這個檢查現在放到了錯誤物件檢查之後
+                    if (React.isValidElement(cellValue)) {
+                      return cellValue;
+                    }
                     
-                    // 3. 檢查是否是其他物件類型 (例如 Grist 的 Reference [L, 1])
+                    // 3. 檢查是否是其他普通物件類型
                     if (cellValue && typeof cellValue === 'object') {
                       return JSON.stringify(cellValue);
                     }
                     
-                    // 4. 對於所有其他情況 (字串、數字、null、undefined)，正常渲染
+                    // 4. 對於所有其他情況 (字串、數字、null、undefined)，轉為字串後渲染
                     return String(cellValue ?? '');
                   })()}
                 </td>
