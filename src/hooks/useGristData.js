@@ -7,6 +7,7 @@ const TARGET_ORG_DOMAIN = 'fcuai.tw';
 
 // --- 輔助函數區塊 ---
 
+// 負責發送 API 請求
 const apiRequest = async (endpoint, apiKey, method = 'GET', params = null) => {
     if (!apiKey) return Promise.reject(new Error('API Key 未設定'));
     let url = `${GRIST_API_BASE_URL}${endpoint}`;
@@ -24,7 +25,7 @@ const apiRequest = async (endpoint, apiKey, method = 'GET', params = null) => {
     return responseData;
 };
 
-// 【新增點】: 將前端篩選狀態轉換為 Grist API 的 filter 參數
+// 將前端篩選狀態轉換為 Grist API 的 filter 參數
 const buildGristFilter = (filters) => {
     if (!filters) return null;
     const conditions = ['and'];
@@ -34,33 +35,29 @@ const buildGristFilter = (filters) => {
         conditions.push(['=', getField('性別'), filters.gender === 'male' ? '男' : '女']);
     }
     if (filters.dateRange?.start) {
-        // Grist 的 DateTime 篩選需要 Unix Timestamp
         const startDate = Math.floor(new Date(filters.dateRange.start).getTime() / 1000);
         conditions.push(['>=', getField('MOD_DTE'), startDate]);
     }
     if (filters.dateRange?.end) {
-        // 包含結束日期當天，所以取隔天的開始
         const endDate = new Date(filters.dateRange.end);
         endDate.setDate(endDate.getDate() + 1);
         const endTimestamp = Math.floor(endDate.getTime() / 1000);
         conditions.push(['<', getField('MOD_DTE'), endTimestamp]);
     }
-    // 注意：後端驅動時，星期篩選較為複雜，因為 Grist filter 不直接支援 weekday 函數。
-    // 這裡暫時移除，若要實現需在前端處理或 Grist 端新增公式欄位。
     if (filters.title && filters.title.trim() !== '') {
         conditions.push(['.includes', getField('職稱'), filters.title.trim()]);
     }
     return conditions.length > 1 ? JSON.stringify(conditions) : null;
 };
 
-// 【新增點】: 將 TanStack Table 的排序狀態轉換為 Grist API 的 sort 參數
+// 將 TanStack Table 的排序狀態轉換為 Grist API 的 sort 參數
 const buildGristSort = (sortingState) => {
     if (!sortingState || sortingState.length === 0) return null;
     return sortingState.map(sort => (sort.desc ? '-' : '') + sort.id).join(',');
 };
 
 
-// --- 自定義 Hook 主體 (伺服器端分頁版) ---
+// --- 自定義 Hook 主體 ---
 export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthError }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
@@ -70,7 +67,6 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
     const [pageData, setPageData] = useState([]);
     const [totalRecords, setTotalRecords] = useState(0);
 
-    // --- 【主要變更點 1】: 管理表格的完整狀態 ---
     const [activeFilters, setActiveFilters] = useState(null);
     const [sorting, setSorting] = useState([]);
     const [pagination, setPagination] = useState({
@@ -86,13 +82,40 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         else { setError(err.message); }
     }, []);
 
-    // 獲取文檔和表格列表 (保持不變)
+    // 獲取文檔列表
+    useEffect(() => {
+        if (!apiKey) {
+            setDocuments([]);
+            return;
+        }
+        const getOrgAndDocs = async () => {
+            setIsLoading(true);
+            setError('');
+            try {
+                const orgsData = await apiRequest('/api/orgs', apiKey);
+                const determinedOrg = (Array.isArray(orgsData) && orgsData.length > 0) ? (orgsData.find(org => org.domain === TARGET_ORG_DOMAIN) || orgsData[0]) : (orgsData?.id ? orgsData : null);
+                if (!determinedOrg?.id) throw new Error('未能確定目標組織');
+                const workspaces = await apiRequest(`/api/orgs/${determinedOrg.id}/workspaces`, apiKey);
+                const allDocs = [], docNameCounts = {};
+                workspaces.forEach(ws => { ws.docs?.forEach(doc => { docNameCounts[doc.name] = (docNameCounts[doc.name] || 0) + 1; allDocs.push({ ...doc, workspaceName: ws.name }); }); });
+                const processedDocs = allDocs.map(doc => ({ ...doc, displayName: docNameCounts[doc.name] > 1 ? `${doc.name} (${doc.workspaceName})` : doc.name }));
+                setDocuments(processedDocs);
+            } catch (err) {
+                handleApiError(err);
+                setDocuments([]);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        getOrgAndDocs();
+    }, [apiKey, handleApiError]);
+
+    // 獲取表格列表
     useEffect(() => {
         if (!selectedDocId || !apiKey) {
             setTables([]);
             return;
         }
-        // --- 【修正點】: 補全 fetchTables 的完整邏輯 ---
         const fetchTables = async () => {
             setIsLoading(true);
             setError('');
@@ -109,38 +132,7 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         fetchTables();
     }, [selectedDocId, apiKey, handleApiError]);
 
-    // 獲取數據和欄位結構
-    useEffect(() => {
-        if (!selectedTableId || !apiKey) {
-            setRawTableData(null);
-            setColumnSchema(null);
-            return;
-        }
-        // --- 【修正點】: 補全 fetchDataAndSchema 的完整邏輯 ---
-        const fetchDataAndSchema = async () => {
-            setIsLoading(true);
-            setError('');
-            setActiveFilters(null);
-            try {
-                const [recordsResponse, columnsResponse] = await Promise.all([
-                    apiRequest(`/api/docs/${selectedDocId}/tables/${selectedTableId}/records`, apiKey, 'GET', { limit: '200' }),
-                    apiRequest(`/api/docs/${selectedDocId}/tables/${selectedTableId}/columns`, apiKey)
-                ]);
-                setRawTableData(recordsResponse.records);
-                setColumnSchema(columnsResponse.columns);
-            } catch (err) {
-                handleApiError(err);
-                setRawTableData(null);
-                setColumnSchema(null);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        fetchDataAndSchema();
-    }, [selectedTableId, selectedDocId, apiKey, handleApiError]);
-
-    // --- 【主要變更點 2】: 核心的數據獲取 useEffect ---
-    // 在表格、分頁、排序或篩選改變時觸發
+    // 核心數據獲取：在表格、分頁、排序或篩選改變時觸發
     useEffect(() => {
         if (!selectedTableId || !apiKey) {
             setPageData([]);
@@ -152,7 +144,6 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
             setIsLoading(true);
             setError('');
 
-            // 組合 API 參數
             const filterParam = buildGristFilter(activeFilters);
             const sortParam = buildGristSort(sorting);
             const params = {
@@ -163,12 +154,10 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
             };
             
             try {
-                // 並行獲取數據、總數和欄位結構 (僅在需要時)
                 const promises = [
                     apiRequest(`/api/docs/${selectedDocId}/tables/${selectedTableId}/records`, apiKey, 'GET', params),
                     apiRequest(`/api/docs/${selectedDocId}/tables/${selectedTableId}/data/count`, apiKey, 'GET', { filter: filterParam })
                 ];
-                // 只有在還沒有 schema 時才請求
                 if (!columnSchema) {
                     promises.push(apiRequest(`/api/docs/${selectedDocId}/tables/${selectedTableId}/columns`, apiKey));
                 }
@@ -199,10 +188,10 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         sorting,
         activeFilters,
         handleApiError,
-        columnSchema // 當 columnSchema 被設置後，避免不必要的重新請求
+        columnSchema
     ]);
     
-    // 當表格切換時，重置分頁、排序和篩選
+    // 當表格切換時，重置所有相關狀態
     useEffect(() => {
         setPagination({ pageIndex: 0, pageSize: 50 });
         setSorting([]);
@@ -210,11 +199,15 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         setColumnSchema(null); // 強制重新獲取新表格的 schema
     }, [selectedTableId]);
     
-
-    // 動態產生欄位定義 (保持不變)
+    // 動態產生欄位定義
     const tableColumns = useMemo(() => {
         if (!columnSchema) return [];
-        const idColumn = { accessorKey: 'id', header: 'id', enableSorting: false, cell: info => info.getValue() };
+        const idColumn = {
+            accessorKey: 'id',
+            header: 'id',
+            enableSorting: false,
+            cell: info => info.getValue(),
+        };
         const otherColumns = columnSchema
             .filter(col => !col.fields.isFormula && col.id !== 'id')
             .map(col => {
@@ -223,10 +216,15 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
                     accessorKey: `fields.${colId}`,
                     header: colLabel || colId,
                     cell: (info) => React.createElement(CellRenderer, { info }),
-                    meta: { columnType: colType },
-                    // 為了讓伺服器排序正常工作，我們需要禁用客戶端排序
-                    enableSorting: true, 
+                    meta: {
+                        columnType: colType,
+                    },
                 };
+                if (colType.startsWith('DateTime') || colType.startsWith('Date')) {
+                    columnDef.sortingFn = 'datetime';
+                } else if (colType === 'Numeric' || colType === 'Int') {
+                    columnDef.sortingFn = 'alphanumeric';
+                }
                 return columnDef;
             });
         return [idColumn, ...otherColumns];
