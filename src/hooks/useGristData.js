@@ -129,7 +129,7 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
                     accessorKey: `fields.${colId}`,
                     header: colLabel || colId,
                     // --- 使用 CellRenderer 進行渲染 ---
-                    cell: (info) => <CellRenderer info={info} />,
+                    cell: (info) => React.createElement(CellRenderer, { info }),
                     // --- 將欄位類型儲存在 meta 中，以便 CellRenderer 訪問 ---
                     meta: {
                         columnType: colType,
