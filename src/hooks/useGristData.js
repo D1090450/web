@@ -145,7 +145,7 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
             const params = {
                 // 請求 page size + 1 筆數據來判斷是否有下一頁
                 limit: pagination.pageSize + 1,
-                skip: pagination.pageIndex * pagination.pageSize,
+                offset: pagination.pageIndex * pagination.pageSize,
                 sort: sortParam,
                 filter: filterParam
             };
