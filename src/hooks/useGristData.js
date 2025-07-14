@@ -23,52 +23,59 @@ const apiRequest = async (endpoint, apiKey, method = 'GET', params = null) => {
     return responseData;
 };
 
-const buildGristFilter = (filters) => {
-    if (!filters) return null;
-    const conditions = ['and'];
-    const getField = (fieldName) => ['record.fields.get', fieldName];
-    if (filters.gender && filters.gender !== 'all') {
-        conditions.push(['=', getField('性別'), filters.gender === 'male' ? '男' : '女']);
-    }
-    if (filters.dateRange?.start) {
-        const startDate = Math.floor(new Date(filters.dateRange.start).getTime() / 1000);
-        conditions.push(['>=', getField('MOD_DTE'), startDate]);
-    }
-    if (filters.dateRange?.end) {
-        const endDate = new Date(filters.dateRange.end);
-        endDate.setDate(endDate.getDate() + 1);
-        const endTimestamp = Math.floor(endDate.getTime() / 1000);
-        conditions.push(['<', getField('MOD_DTE'), endTimestamp]);
-    }
-    if (filters.title && filters.title.trim() !== '') {
-        conditions.push(['.includes', getField('職稱'), filters.title.trim()]);
-    }
-    return conditions.length > 1 ? JSON.stringify(conditions) : null;
+// --- 【主要變更點 1】: 本地篩選函數回歸 ---
+const applyLocalFilters = (data, filters) => {
+    if (!filters || !data) return data;
+    const isDateFilterActive = (filters.dateRange?.start || filters.dateRange?.end || (filters.days && !filters.days.all));
+
+    return data.filter(record => {
+        const fields = record.fields || {};
+        if (isDateFilterActive) {
+            const timestamp = fields['MOD_DTE'];
+            if (timestamp == null || typeof timestamp !== 'number') return false;
+            const recordDate = new Date(timestamp * 1000);
+            if (isNaN(recordDate.getTime())) return false;
+            if (filters.dateRange?.start) {
+                const startDate = new Date(filters.dateRange.start);
+                startDate.setHours(0, 0, 0, 0);
+                if (recordDate < startDate) return false;
+            }
+            if (filters.dateRange?.end) {
+                const endDate = new Date(filters.dateRange.end);
+                endDate.setDate(endDate.getDate() + 1);
+                endDate.setHours(0, 0, 0, 0);
+                if (recordDate >= endDate) return false;
+            }
+            if (filters.days && !filters.days.all) {
+                const dayMap = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+                const recordDayIndex = recordDate.getDay();
+                const selectedDays = Object.keys(filters.days).filter(day => day !== 'all' && filters.days[day]).map(day => dayMap[day]);
+                if (selectedDays.length > 0 && !selectedDays.includes(recordDayIndex)) return false;
+            }
+        }
+        if (filters.gender && filters.gender !== 'all') {
+            if (fields['性別'] !== (filters.gender === 'male' ? '男' : '女')) return false;
+        }
+        if (filters.title && filters.title.trim() !== '') {
+            if (!fields['職稱'] || !String(fields['職稱']).toLowerCase().includes(filters.title.trim().toLowerCase())) return false;
+        }
+        return true;
+    });
 };
 
-const buildGristSort = (sortingState) => {
-    if (!sortingState || sortingState.length === 0) return null;
-    return sortingState.map(sort => (sort.desc ? '-' : '') + sort.id).join(',');
-};
 
-// --- 自定義 Hook 主體 ---
+// --- 自定義 Hook 主體 (客戶端處理版) ---
 export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthError }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const [documents, setDocuments] = useState([]);
     const [tables, setTables] = useState([]);
     const [columnSchema, setColumnSchema] = useState(null);
-    const [pageData, setPageData] = useState([]);
+    const [rawData, setRawData] = useState(null); // 儲存從 API 獲取的原始數據
 
-    // --- 【主要變更點 1】: 狀態變更 ---
-    const [hasNextPage, setHasNextPage] = useState(false); // 取代 totalRecords
-
+    // 【主要變更點 2】: 篩選後的數據在 Hook 內部處理並返回
+    const [filteredData, setFilteredData] = useState(null);
     const [activeFilters, setActiveFilters] = useState(null);
-    const [sorting, setSorting] = useState([]);
-    const [pagination, setPagination] = useState({
-        pageIndex: 0,
-        pageSize: 50,
-    });
     
     const onAuthErrorRef = useRef(onAuthError);
     useEffect(() => { onAuthErrorRef.current = onAuthError; }, [onAuthError]);
@@ -78,7 +85,6 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         else { setError(err.message); }
     }, []);
 
-    // 獲取文檔和表格列表 (保持不變)
     useEffect(() => {
         if (!apiKey) {
             setDocuments([]);
@@ -128,77 +134,44 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         fetchTables();
     }, [selectedDocId, apiKey, handleApiError]);
 
-    // --- 【主要變更點 2】: 核心數據獲取邏輯更新 ---
+
+    // 【主要變更點 3】: 數據獲取邏輯大幅簡化
     useEffect(() => {
         if (!selectedTableId || !apiKey) {
-            setPageData([]);
+            setRawData(null);
             setColumnSchema(null);
             return;
         }
 
-        const fetchData = async () => {
+        const fetchDataAndSchema = async () => {
             setIsLoading(true);
             setError('');
-
-            const filterParam = buildGristFilter(activeFilters);
-            const sortParam = buildGristSort(sorting);
-            const params = {
-                // 請求 page size + 1 筆數據來判斷是否有下一頁
-                limit: pagination.pageSize + 1,
-                offset: pagination.pageIndex * pagination.pageSize,
-                sort: sortParam,
-                filter: filterParam
-            };
-            
+            setActiveFilters(null); // 切換表格時重置篩選
             try {
-                // 不再需要 Promise.all，因為獲取總數的請求被移除了
-                const recordsResponse = await apiRequest(`/api/docs/${selectedDocId}/tables/${selectedTableId}/records`, apiKey, 'GET', params);
-
-                const records = recordsResponse.records || [];
+                // 使用一個較大的 limit，不再有 skip
+                const params = { limit: 500 }; 
                 
-                // 檢查返回的記錄數
-                const hasMore = records.length > pagination.pageSize;
-                setHasNextPage(hasMore);
+                const [recordsResponse, columnsResponse] = await Promise.all([
+                    apiRequest(`/api/docs/${selectedDocId}/tables/${selectedTableId}/records`, apiKey, 'GET', params),
+                    apiRequest(`/api/docs/${selectedDocId}/tables/${selectedTableId}/columns`, apiKey)
+                ]);
 
-                // 只儲存當前頁需要的數據
-                setPageData(hasMore ? records.slice(0, pagination.pageSize) : records);
-
-                // 如果還沒有欄位結構，則獲取它
-                if (!columnSchema) {
-                    const columnsResponse = await apiRequest(`/api/docs/${selectedDocId}/tables/${selectedTableId}/columns`, apiKey);
-                    setColumnSchema(columnsResponse.columns);
-                }
+                setRawData(recordsResponse.records);
+                setColumnSchema(columnsResponse.columns);
 
             } catch (err) {
                 handleApiError(err);
-                setPageData([]);
+                setRawData(null);
+                setColumnSchema(null);
             } finally {
                 setIsLoading(false);
             }
         };
 
-        fetchData();
-    }, [
-        apiKey,
-        selectedTableId,
-        selectedDocId,
-        pagination,
-        sorting,
-        activeFilters,
-        handleApiError,
-        columnSchema
-    ]);
+        fetchDataAndSchema();
+    }, [selectedTableId, selectedDocId, apiKey, handleApiError]);
     
-    // 當表格切換時，重置所有相關狀態
-    useEffect(() => {
-        setPagination({ pageIndex: 0, pageSize: 50 });
-        setSorting([]);
-        setActiveFilters(null);
-        setColumnSchema(null);
-        setHasNextPage(false);
-    }, [selectedTableId]);
-    
-    // 動態產生欄位定義 (保持不變)
+    // 【主要變更點 4】: 動態產生欄位定義 (保持不變)
     const tableColumns = useMemo(() => {
         if (!columnSchema) return [];
         const idColumn = { accessorKey: 'id', header: 'id', enableSorting: false, cell: info => info.getValue() };
@@ -221,20 +194,25 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
             });
         return [idColumn, ...otherColumns];
     }, [columnSchema]);
+
+    // 【主要變更點 5】: 處理本地篩選的 useEffect
+    useEffect(() => {
+        if (!rawData) {
+            setFilteredData(null);
+            return;
+        }
+        setFilteredData(applyLocalFilters(rawData, activeFilters));
+    }, [rawData, activeFilters]);
     
-    // 返回所有需要的狀態和函數給外部組件
+    // 【主要變更點 6】: 返回簡化後的狀態
     return {
         isLoading,
         error,
         documents,
         tables,
         columns: tableColumns,
-        pageData,
-        hasNextPage, // 【主要變更點 3】: 返回 hasNextPage
-        pagination,
-        sorting,
-        setPagination,
-        setSorting,
+        // 直接返回篩選後的數據，讓 TanStack Table 進行分頁和排序
+        tableData: filteredData, 
         handleFilterChange: setActiveFilters,
     };
 };

@@ -89,19 +89,14 @@ function GristDynamicSelectorViewer() {
     const [selectedTableId, setSelectedTableId] = useState('');
     const apiKeyManagerRef = useRef(null);
 
-    // --- 【主要變更點 1】: 從 useGristData 獲取所有與表格相關的狀態和函數 ---
+    // --- 【主要變更點 1】: Hook 返回的狀態非常簡潔 ---
     const {
         isLoading,
         error: dataError,
         documents,
         tables,
         columns,
-        pageData, 
-        hasNextPage, // 接收 hasNextPage 狀態
-        pagination,
-        setPagination,
-        sorting,
-        setSorting,
+        tableData, // 這是經過篩選後的數據
         handleFilterChange,
     } = useGristData({
         apiKey,
@@ -179,26 +174,16 @@ function GristDynamicSelectorViewer() {
                 </div>
                 )}
                 
-                {selectedTableId && <Filter onSubmit={handleFilterChange} isLoading={isLoading} />}
+                {/* 只有在有數據時才顯示篩選器 */}
+                {tableData && <Filter onSubmit={handleFilterChange} isLoading={isLoading} />}
             </div>
             )}
 
-            {/* --- 【主要變更點 2】: 將所有需要的 props 傳遞給 Table 組件 --- */}
-            {selectedTableId && !dataError && (
-                <Table 
-                  data={pageData ?? []} // 確保總是傳遞一個陣列
-                  columns={columns}
-                  hasNextPage={hasNextPage}
-                  pagination={pagination}
-                  setPagination={setPagination}
-                  sorting={sorting}
-                  setSorting={setSorting}
-                />
+            {/* --- 【主要變更點 2】: 只需傳遞 data 和 columns 給 Table 組件 --- */}
+            {tableData && columns && (
+                <Table data={tableData} columns={columns} />
             )}
             
-            {pageData && pageData.length === 0 && !isLoading && !dataError && (
-              <p style={{textAlign: 'center', ...styles.card, marginTop: '20px'}}>找不到符合條件的記錄。</p>
-            )}
         </div>
     );
 }

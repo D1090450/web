@@ -2,6 +2,8 @@ import React from 'react';
 import {
   useReactTable,
   getCoreRowModel,
+  getSortedRowModel,
+  getPaginationRowModel, // 【主要變更點 1】: 導入分頁模型
   flexRender,
 } from '@tanstack/react-table';
 
@@ -18,71 +20,44 @@ const styles = {
   td: { padding: '12px', whiteSpace: 'nowrap', color: '#555e6d', borderBottom: '1px solid #dee2e6' },
   sortIcon: { fontSize: '12px', opacity: 0.8 },
   paginationContainer: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '16px',
-    flexWrap: 'wrap',
-    gap: '16px',
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    padding: '16px', flexWrap: 'wrap', gap: '16px',
   },
-  paginationControls: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-  },
+  paginationControls: { display: 'flex', alignItems: 'center', gap: '8px' },
   paginationButton: {
-    padding: '6px 10px',
-    border: '1px solid #dee2e6',
-    backgroundColor: '#ffffff',
-    borderRadius: '4px',
-    cursor: 'pointer',
+    padding: '6px 10px', border: '1px solid #dee2e6', backgroundColor: '#ffffff',
+    borderRadius: '4px', cursor: 'pointer',
   },
-  paginationButtonDisabled: {
-    cursor: 'not-allowed',
-    opacity: 0.5,
+  paginationButtonDisabled: { cursor: 'not-allowed', opacity: 0.5 },
+  paginationInput: {
+    width: '50px', padding: '6px', border: '1px solid #dee2e6',
+    borderRadius: '4px', textAlign: 'center',
   },
-  paginationSelect: {
-    padding: '6px',
-    border: '1px solid #dee2e6',
-    borderRadius: '4px',
-  }
+  paginationSelect: { padding: '6px', border: '1px solid #dee2e6', borderRadius: '4px' }
 };
 
 /**
- * 支援伺服器端游標分頁和排序的可重用表格組件
- * @param {{
- *   data: any[],
- *   columns: any[],
- *   hasNextPage: boolean, // 【主要變更點 1】: 新的 prop
- *   pagination: { pageIndex: number, pageSize: number },
- *   setPagination: (updater: any) => void,
- *   sorting: any[],
- *   setSorting: (updater: any) => void
- * }} props
+ * @param {{ data: any[], columns: any[] }} props
  */
-export const Table = ({
-  data,
-  columns,
-  hasNextPage,
-  pagination,
-  setPagination,
-  sorting,
-  setSorting,
-}) => {
+export const Table = ({ data, columns }) => {
+  const [sorting, setSorting] = React.useState([]);
+  const [pagination, setPagination] = React.useState({
+    pageIndex: 0,
+    pageSize: 50,
+  });
 
   const table = useReactTable({
     data,
     columns,
-    // 移除 pageCount，因為我們不知道總頁數
     state: {
-      pagination,
       sorting,
+      pagination,
     },
-    manualPagination: true,
-    manualSorting: true,
-    onPaginationChange: setPagination,
     onSortingChange: setSorting,
+    onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
   });
 
   return (
@@ -132,44 +107,67 @@ export const Table = ({
             </tr>
           ))}
         </tbody>
-        {/* --- 【主要變更點 2】: 簡化分頁控制 UI --- */}
         <tfoot>
             <tr>
                 <td colSpan={columns.length} style={{ padding: 0 }}>
                     <div style={styles.paginationContainer}>
                         <div style={styles.paginationControls}>
-                            {/* 移除了跳至第一頁和最後一頁的按鈕 */}
+                            <button
+                                style={{ ...styles.paginationButton, ...( !table.getCanPreviousPage() && styles.paginationButtonDisabled) }}
+                                onClick={() => table.setPageIndex(0)}
+                                disabled={!table.getCanPreviousPage()}
+                            >
+                                {'<<'}
+                            </button>
                             <button
                                 style={{ ...styles.paginationButton, ...( !table.getCanPreviousPage() && styles.paginationButtonDisabled) }}
                                 onClick={() => table.previousPage()}
                                 disabled={!table.getCanPreviousPage()}
                             >
-                                {'< 上一頁'}
+                                {'<'}
                             </button>
                             <button
-                                style={{ ...styles.paginationButton, ...( !hasNextPage && styles.paginationButtonDisabled) }}
+                                style={{ ...styles.paginationButton, ...( !table.getCanNextPage() && styles.paginationButtonDisabled) }}
                                 onClick={() => table.nextPage()}
-                                disabled={!hasNextPage} // 使用 hasNextPage 控制
+                                disabled={!table.getCanNextPage()}
                             >
-                                {'下一頁 >'}
+                                {'>'}
+                            </button>
+                            <button
+                                style={{ ...styles.paginationButton, ...( !table.getCanNextPage() && styles.paginationButtonDisabled) }}
+                                onClick={() => table.setPageIndex(table.getPageCount() - 1)}
+                                disabled={!table.getCanNextPage()}
+                            >
+                                {'>>'}
                             </button>
                         </div>
                         <div style={styles.paginationControls}>
                             <span>
                                 第{' '}
                                 <strong>
-                                    {table.getState().pagination.pageIndex + 1}
+                                    {table.getState().pagination.pageIndex + 1} / {table.getPageCount()} 頁
                                 </strong>
-                                {' '}頁
+                            </span>
+                            <span>
+                                | 跳至:
+                                <input
+                                    type="number"
+                                    defaultValue={table.getState().pagination.pageIndex + 1}
+                                    onChange={e => {
+                                        const page = e.target.value ? Number(e.target.value) - 1 : 0;
+                                        if (page >= 0 && page < table.getPageCount()) {
+                                          table.setPageIndex(page);
+                                        }
+                                    }}
+                                    style={styles.paginationInput}
+                                />
                             </span>
                         </div>
                         <div style={styles.paginationControls}>
-                             <select
+                            <select
                                 style={styles.paginationSelect}
                                 value={table.getState().pagination.pageSize}
                                 onChange={e => {
-                                    // 當 page size 改變時，回到第一頁
-                                    table.setPageIndex(0);
                                     table.setPageSize(Number(e.target.value));
                                 }}
                             >
