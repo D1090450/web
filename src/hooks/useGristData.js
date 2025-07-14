@@ -6,8 +6,6 @@ const GRIST_API_BASE_URL = 'https://tiss-grist.fcuai.tw';
 const TARGET_ORG_DOMAIN = 'fcuai.tw';
 
 // --- 輔助函數區塊 ---
-
-// 負責發送 API 請求
 const apiRequest = async (endpoint, apiKey, method = 'GET', params = null) => {
     if (!apiKey) return Promise.reject(new Error('API Key 未設定'));
     let url = `${GRIST_API_BASE_URL}${endpoint}`;
@@ -25,12 +23,10 @@ const apiRequest = async (endpoint, apiKey, method = 'GET', params = null) => {
     return responseData;
 };
 
-// 將前端篩選狀態轉換為 Grist API 的 filter 參數
 const buildGristFilter = (filters) => {
     if (!filters) return null;
     const conditions = ['and'];
     const getField = (fieldName) => ['record.fields.get', fieldName];
-
     if (filters.gender && filters.gender !== 'all') {
         conditions.push(['=', getField('性別'), filters.gender === 'male' ? '男' : '女']);
     }
@@ -50,12 +46,10 @@ const buildGristFilter = (filters) => {
     return conditions.length > 1 ? JSON.stringify(conditions) : null;
 };
 
-// 將 TanStack Table 的排序狀態轉換為 Grist API 的 sort 參數
 const buildGristSort = (sortingState) => {
     if (!sortingState || sortingState.length === 0) return null;
     return sortingState.map(sort => (sort.desc ? '-' : '') + sort.id).join(',');
 };
-
 
 // --- 自定義 Hook 主體 ---
 export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthError }) => {
@@ -65,7 +59,9 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
     const [tables, setTables] = useState([]);
     const [columnSchema, setColumnSchema] = useState(null);
     const [pageData, setPageData] = useState([]);
-    const [totalRecords, setTotalRecords] = useState(0);
+
+    // --- 【主要變更點 1】: 狀態變更 ---
+    const [hasNextPage, setHasNextPage] = useState(false); // 取代 totalRecords
 
     const [activeFilters, setActiveFilters] = useState(null);
     const [sorting, setSorting] = useState([]);
@@ -82,7 +78,7 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         else { setError(err.message); }
     }, []);
 
-    // 獲取文檔列表
+    // 獲取文檔和表格列表 (保持不變)
     useEffect(() => {
         if (!apiKey) {
             setDocuments([]);
@@ -132,7 +128,7 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         fetchTables();
     }, [selectedDocId, apiKey, handleApiError]);
 
-    // 核心數據獲取：在表格、分頁、排序或篩選改變時觸發
+    // --- 【主要變更點 2】: 核心數據獲取邏輯更新 ---
     useEffect(() => {
         if (!selectedTableId || !apiKey) {
             setPageData([]);
@@ -147,33 +143,35 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
             const filterParam = buildGristFilter(activeFilters);
             const sortParam = buildGristSort(sorting);
             const params = {
-                limit: pagination.pageSize,
+                // 請求 page size + 1 筆數據來判斷是否有下一頁
+                limit: pagination.pageSize + 1,
                 skip: pagination.pageIndex * pagination.pageSize,
                 sort: sortParam,
                 filter: filterParam
             };
             
             try {
-                const promises = [
-                    apiRequest(`/api/docs/${selectedDocId}/tables/${selectedTableId}/records`, apiKey, 'GET', params),
-                    apiRequest(`/api/docs/${selectedDocId}/tables/${selectedTableId}/data/count`, apiKey, 'GET', { filter: filterParam })
-                ];
+                // 不再需要 Promise.all，因為獲取總數的請求被移除了
+                const recordsResponse = await apiRequest(`/api/docs/${selectedDocId}/tables/${selectedTableId}/records`, apiKey, 'GET', params);
+
+                const records = recordsResponse.records || [];
+                
+                // 檢查返回的記錄數
+                const hasMore = records.length > pagination.pageSize;
+                setHasNextPage(hasMore);
+
+                // 只儲存當前頁需要的數據
+                setPageData(hasMore ? records.slice(0, pagination.pageSize) : records);
+
+                // 如果還沒有欄位結構，則獲取它
                 if (!columnSchema) {
-                    promises.push(apiRequest(`/api/docs/${selectedDocId}/tables/${selectedTableId}/columns`, apiKey));
-                }
-
-                const [recordsResponse, countResponse, columnsResponse] = await Promise.all(promises);
-
-                setPageData(recordsResponse.records);
-                setTotalRecords(countResponse.count);
-                if (columnsResponse) {
+                    const columnsResponse = await apiRequest(`/api/docs/${selectedDocId}/tables/${selectedTableId}/columns`, apiKey);
                     setColumnSchema(columnsResponse.columns);
                 }
 
             } catch (err) {
                 handleApiError(err);
                 setPageData([]);
-                setTotalRecords(0);
             } finally {
                 setIsLoading(false);
             }
@@ -196,18 +194,14 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         setPagination({ pageIndex: 0, pageSize: 50 });
         setSorting([]);
         setActiveFilters(null);
-        setColumnSchema(null); // 強制重新獲取新表格的 schema
+        setColumnSchema(null);
+        setHasNextPage(false);
     }, [selectedTableId]);
     
-    // 動態產生欄位定義
+    // 動態產生欄位定義 (保持不變)
     const tableColumns = useMemo(() => {
         if (!columnSchema) return [];
-        const idColumn = {
-            accessorKey: 'id',
-            header: 'id',
-            enableSorting: false,
-            cell: info => info.getValue(),
-        };
+        const idColumn = { accessorKey: 'id', header: 'id', enableSorting: false, cell: info => info.getValue() };
         const otherColumns = columnSchema
             .filter(col => !col.fields.isFormula && col.id !== 'id')
             .map(col => {
@@ -216,9 +210,7 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
                     accessorKey: `fields.${colId}`,
                     header: colLabel || colId,
                     cell: (info) => React.createElement(CellRenderer, { info }),
-                    meta: {
-                        columnType: colType,
-                    },
+                    meta: { columnType: colType },
                 };
                 if (colType.startsWith('DateTime') || colType.startsWith('Date')) {
                     columnDef.sortingFn = 'datetime';
@@ -238,7 +230,7 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         tables,
         columns: tableColumns,
         pageData,
-        totalRecords,
+        hasNextPage, // 【主要變更點 3】: 返回 hasNextPage
         pagination,
         sorting,
         setPagination,

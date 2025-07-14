@@ -96,8 +96,8 @@ function GristDynamicSelectorViewer() {
         documents,
         tables,
         columns,
-        pageData, // 注意：現在是 pageData，而不是 tableData
-        totalRecords,
+        pageData, 
+        hasNextPage, // 接收 hasNextPage 狀態
         pagination,
         setPagination,
         sorting,
@@ -114,9 +114,6 @@ function GristDynamicSelectorViewer() {
             setStatusMessage('API Key 已失效或權限不足，請重新登入 Grist 並刷新頁面，或手動設定。');
         }
     });
-
-    // 計算總頁數
-    const pageCount = Math.ceil(totalRecords / pagination.pageSize);
 
     // 其他 Hooks 保持不變
     const handleApiKeyUpdate = useCallback((key, autoFetched = false) => {
@@ -182,7 +179,6 @@ function GristDynamicSelectorViewer() {
                 </div>
                 )}
                 
-                {/* 只有在選定表格後才顯示篩選器 */}
                 {selectedTableId && <Filter onSubmit={handleFilterChange} isLoading={isLoading} />}
             </div>
             )}
@@ -190,9 +186,9 @@ function GristDynamicSelectorViewer() {
             {/* --- 【主要變更點 2】: 將所有需要的 props 傳遞給 Table 組件 --- */}
             {selectedTableId && !dataError && (
                 <Table 
-                  data={pageData} 
+                  data={pageData ?? []} // 確保總是傳遞一個陣列
                   columns={columns}
-                  pageCount={pageCount}
+                  hasNextPage={hasNextPage}
                   pagination={pagination}
                   setPagination={setPagination}
                   sorting={sorting}
@@ -200,7 +196,6 @@ function GristDynamicSelectorViewer() {
                 />
             )}
             
-            {/* 當有數據但篩選結果為空時的提示 */}
             {pageData && pageData.length === 0 && !isLoading && !dataError && (
               <p style={{textAlign: 'center', ...styles.card, marginTop: '20px'}}>找不到符合條件的記錄。</p>
             )}
