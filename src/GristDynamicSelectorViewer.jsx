@@ -1,9 +1,9 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 
 // --- Imports ---
-import { login } from './login';
 import Filter from './components/Filter';
 import { useGristData } from './hooks/useGristData';
+import { useGristLogin } from './hooks/useGristLogin'; // 【主要變更點 1】
 import { Table } from './components/Table'; 
 
 const GRIST_API_BASE_URL = 'https://tiss-grist.fcuai.tw';
@@ -45,40 +45,7 @@ const styles = {
   buttonSecondary: { backgroundColor: '#6c757d', color: '#ffffff' },
 };
 
-// API Key 管理組件保持不變
-const GristApiKeyManager = React.forwardRef(({ apiKey, onApiKeyUpdate, onStatusUpdate }, ref) => {
-    const [localApiKey, setLocalApiKey] = useState(apiKey || '');
-    useEffect(() => { setLocalApiKey(apiKey || ''); }, [apiKey]);
-    const fetchKeyFromProfile = useCallback(async () => {
-      try {
-        const response = await fetch(`${GRIST_API_BASE_URL}/api/profile/apiKey`, { credentials: 'include', headers: { 'Accept': 'text/plain' } });
-        const fetchedKey = await response.text();
-        if (!response.ok || !fetchedKey || fetchedKey.includes('<') || fetchedKey.length < 32) {
-          if (!apiKey) onStatusUpdate(`自動獲取失敗，請先登入 Grist。`);
-          return false;
-        }
-        onApiKeyUpdate(fetchedKey.trim(), true);
-        return true;
-      } catch (error) {
-        if (!apiKey) onStatusUpdate(`自動獲取失敗，請檢查網路連線或 Grist 服務狀態。`);
-        return false;
-      }
-    }, [apiKey, onApiKeyUpdate, onStatusUpdate]);
-    React.useImperativeHandle(ref, () => ({ triggerFetchKeyFromProfile: fetchKeyFromProfile }));
-    const handleManualSubmit = () => {
-      if (localApiKey.trim()) onApiKeyUpdate(localApiKey.trim(), false);
-      else onStatusUpdate('請輸入有效的 API Key');
-    };
-    return (
-      <div style={{ ...styles.card, borderStyle: 'dashed' }}>
-        <h4 style={{ marginTop: '0', marginBottom: '15px' }}>API Key 管理</h4>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <input type="password" value={localApiKey} onChange={(e) => setLocalApiKey(e.target.value)} placeholder="在此輸入或貼上 Grist API Key" style={{ ...styles.inputBase, flexGrow: 1 }}/>
-          <button onClick={handleManualSubmit} style={{...styles.buttonBase, backgroundColor: '#e9ecef', color: '#333740' }}>手動設定</button>
-        </div>
-      </div>
-    );
-});
+// --- 【主要變更點 2】: GristApiKeyManager 組件被完全移除 ---
 
 // 主組件
 function GristDynamicSelectorViewer() {
@@ -87,16 +54,33 @@ function GristDynamicSelectorViewer() {
     const [showLoginPrompt, setShowLoginPrompt] = useState(false);
     const [selectedDocId, setSelectedDocId] = useState('');
     const [selectedTableId, setSelectedTableId] = useState('');
-    const apiKeyManagerRef = useRef(null);
+    // apiKeyManagerRef 被移除
 
-    // --- 【主要變更點 1】: Hook 返回的狀態非常簡潔 ---
+    // 【主要變更點 3】: handleApiKeyUpdate 現在是傳給 useGristLogin 的 onSuccess 回調
+    const handleApiKeyUpdate = useCallback((key) => {
+        setApiKey(key);
+        setShowLoginPrompt(false);
+        if (key) {
+            localStorage.setItem('gristApiKey', key);
+            setStatusMessage('成功獲取 API Key！');
+        } else {
+            localStorage.removeItem('gristApiKey');
+        }
+    }, []);
+
+    // 【主要變更點 4】: 使用新的 useGristLogin Hook
+    const { openLoginPopup, fetchKey } = useGristLogin({
+        onSuccess: handleApiKeyUpdate,
+        onStatusUpdate: setStatusMessage,
+    });
+    
     const {
         isLoading,
         error: dataError,
         documents,
         tables,
         columns,
-        tableData, // 這是經過篩選後的數據
+        tableData,
         handleFilterChange,
     } = useGristData({
         apiKey,
@@ -106,30 +90,22 @@ function GristDynamicSelectorViewer() {
             setApiKey('');
             localStorage.removeItem('gristApiKey');
             setShowLoginPrompt(true);
-            setStatusMessage('API Key 已失效或權限不足，請重新登入 Grist 並刷新頁面，或手動設定。');
+            setStatusMessage('API Key 已失效或權限不足，請重新登入或手動獲取。');
         }
     });
 
-    // 其他 Hooks 保持不變
-    const handleApiKeyUpdate = useCallback((key, autoFetched = false) => {
-        setApiKey(key); setShowLoginPrompt(false);
-        if (key) {
-            localStorage.setItem('gristApiKey', key);
-            setStatusMessage(autoFetched ? 'API Key 已與 Grist 會話同步！' : 'API Key 已手動設定。');
-        } else {
-            localStorage.removeItem('gristApiKey');
-        }
-    }, []);
+    // 啟動時自動獲取 API Key
+    useEffect(() => {
+        // 使用從 Hook 中獲取的 fetchKey 函數
+        fetchKey();
+    }, [fetchKey]);
 
-    useEffect(() => { setTimeout(() => apiKeyManagerRef.current?.triggerFetchKeyFromProfile(), 100); }, []);
-    useEffect(() => { if (!apiKey && !localStorage.getItem('gristApiKey')) { setShowLoginPrompt(true); } }, [apiKey]);
+    useEffect(() => {
+        if (!apiKey && !localStorage.getItem('gristApiKey')) {
+            setShowLoginPrompt(true);
+        }
+    }, [apiKey]);
     
-    const { openLoginPopup } = login({
-        onFetchKeyAttempt: () => apiKeyManagerRef.current?.triggerFetchKeyFromProfile(),
-        onStatusUpdate: setStatusMessage,
-        hasApiKey: !!apiKey,
-    });
-  
     const hasErrorStatus = statusMessage.includes('失敗') || statusMessage.includes('錯誤') || statusMessage.includes('失效') || dataError;
   
     return (
@@ -142,14 +118,13 @@ function GristDynamicSelectorViewer() {
             {statusMessage && <p style={styles.statusMessage(hasErrorStatus)}>{hasErrorStatus ? '⚠️ ' : '✅ '}{isLoading ? '處理中... ' : ''}{statusMessage}</p>}
             {dataError && <p style={{...styles.statusMessage(true), marginTop: '15px' }}>⚠️ 錯誤: {dataError}</p>}
             
-            <GristApiKeyManager ref={apiKeyManagerRef} apiKey={apiKey} onApiKeyUpdate={handleApiKeyUpdate} onStatusUpdate={setStatusMessage} />
-
+            {/* 【主要變更點 5】: UI 大幅簡化 */}
             {showLoginPrompt && !apiKey && (
             <div style={{ ...styles.card, textAlign: 'center', backgroundColor: '#fdecea', borderColor: '#dc3545' }}>
                 <p style={{ margin: '0 0 15px 0', fontWeight: '500', color: '#dc3545' }}>需要有效的 API Key 才能繼續操作。</p>
                 <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
                     <button onClick={openLoginPopup} style={{...styles.buttonBase, ...styles.buttonPrimary}}>開啟 Grist 登入</button>
-                    <button onClick={() => apiKeyManagerRef.current?.triggerFetchKeyFromProfile()} style={{...styles.buttonBase, ...styles.buttonSecondary}}>重試自動獲取</button>
+                    <button onClick={() => fetchKey()} style={{...styles.buttonBase, ...styles.buttonSecondary}}>重試獲取 Key</button>
                 </div>
             </div>
             )}
@@ -174,16 +149,13 @@ function GristDynamicSelectorViewer() {
                 </div>
                 )}
                 
-                {/* 只有在有數據時才顯示篩選器 */}
                 {tableData && <Filter onSubmit={handleFilterChange} isLoading={isLoading} />}
             </div>
             )}
 
-            {/* --- 【主要變更點 2】: 只需傳遞 data 和 columns 給 Table 組件 --- */}
             {tableData && columns && (
                 <Table data={tableData} columns={columns} />
             )}
-            
         </div>
     );
 }
