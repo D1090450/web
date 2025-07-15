@@ -3,7 +3,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 // --- Imports ---
 import Filter from './components/Filter';
 import { useGristData } from './hooks/useGristData';
-import { useGristLogin } from './hooks/useGristLogin'; // 【主要變更點 1】
+import { useGristLogin } from './hooks/useGristLogin'; 
 import { Table } from './components/Table'; 
 
 const GRIST_API_BASE_URL = 'https://tiss-grist.fcuai.tw';
@@ -45,7 +45,7 @@ const styles = {
   buttonSecondary: { backgroundColor: '#6c757d', color: '#ffffff' },
 };
 
-// --- 【主要變更點 2】: GristApiKeyManager 組件被完全移除 ---
+
 
 // 主組件
 function GristDynamicSelectorViewer() {
@@ -54,7 +54,6 @@ function GristDynamicSelectorViewer() {
     const [showLoginPrompt, setShowLoginPrompt] = useState(false);
     const [selectedDocId, setSelectedDocId] = useState('');
     const [selectedTableId, setSelectedTableId] = useState('');
-    // apiKeyManagerRef 被移除
 
     // 【主要變更點 3】: handleApiKeyUpdate 現在是傳給 useGristLogin 的 onSuccess 回調
     const handleApiKeyUpdate = useCallback((key) => {
