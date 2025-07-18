@@ -9,8 +9,15 @@ import {
   SortingState,
   PaginationState,
 } from '@tanstack/react-table';
+// --- 【主要修正點 1】: 從 react-icons 導入圖標 ---
+import {
+  BiChevronsLeft,
+  BiChevronLeft,
+  BiChevronRight,
+  BiChevronsRight
+} from 'react-icons/bi';
 
-// --- 樣式定義 (保持不變) ---
+// --- 樣式定義 (微調按鈕樣式) ---
 const styles: { [key: string]: React.CSSProperties } = {
   tableContainer: { marginTop: '30px', overflowX: 'auto', border: '1px solid #dee2e6', borderRadius: '6px' },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: '14px' },
@@ -27,9 +34,14 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '16px', flexWrap: 'wrap', gap: '16px',
   },
   paginationControls: { display: 'flex', alignItems: 'center', gap: '8px' },
+  // 【主要修正點 2】: 微調按鈕樣式以適應圖標
   paginationButton: {
-    padding: '6px 10px', border: '1px solid #dee2e6', backgroundColor: '#ffffff',
+    padding: '6px', // 讓按鈕更方正
+    border: '1px solid #dee2e6', backgroundColor: '#ffffff',
     borderRadius: '4px', cursor: 'pointer',
+    display: 'flex', // 使用 Flexbox
+    alignItems: 'center', // 垂直置中
+    justifyContent: 'center', // 水平置中
   },
   paginationButtonDisabled: { cursor: 'not-allowed', opacity: 0.5 },
   paginationInput: {
@@ -125,34 +137,34 @@ export const Table = <TData extends object>({ data, columns }: TableProps<TData>
                 <td colSpan={columns.length} style={{ padding: 0 }}>
                     <div style={styles.paginationContainer}>
                         <div style={styles.paginationControls}>
-                            {/* --- 【主要修正點】: 使用 HTML 實體來顯示圖示 --- */}
+                            {/* --- 【主要修正點 3】: 使用圖標元件替換文字 --- */}
                             <button
                                 style={{ ...styles.paginationButton, ...( !table.getCanPreviousPage() && styles.paginationButtonDisabled) }}
                                 onClick={() => table.setPageIndex(0)}
                                 disabled={!table.getCanPreviousPage()}
                             >
-                                {'\u00AB'} {/* 雙左箭頭的另一種寫法 */}
+                                <BiChevronsLeft size={18} />
                             </button>
                             <button
                                 style={{ ...styles.paginationButton, ...( !table.getCanPreviousPage() && styles.paginationButtonDisabled) }}
                                 onClick={() => table.previousPage()}
                                 disabled={!table.getCanPreviousPage()}
                             >
-                                {'\u003C'} {/* 小於符號 (<) */}
+                                <BiChevronLeft size={18} />
                             </button>
                             <button
                                 style={{ ...styles.paginationButton, ...( !table.getCanNextPage() && styles.paginationButtonDisabled) }}
                                 onClick={() => table.nextPage()}
                                 disabled={!table.getCanNextPage()}
                             >
-                                {'\u003E'} {/* 大於符號 (>) */}
+                                <BiChevronRight size={18} />
                             </button>
                             <button
                                 style={{ ...styles.paginationButton, ...( !table.getCanNextPage() && styles.paginationButtonDisabled) }}
                                 onClick={() => table.setPageIndex(table.getPageCount() - 1)}
                                 disabled={!table.getCanNextPage()}
                             >
-                                {'\u00BB'} {/* 雙右箭頭 */}
+                                <BiChevronsRight size={18} />
                             </button>
                         </div>
                         <div style={styles.paginationControls}>
