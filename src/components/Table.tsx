@@ -1,19 +1,23 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
   getSortedRowModel,
-  getPaginationRowModel, // 【主要變更點 1】: 導入分頁模型
+  getPaginationRowModel,
   flexRender,
+  // 導入類型定義
+  ColumnDef,
+  SortingState,
+  PaginationState,
 } from '@tanstack/react-table';
 
 // --- 樣式定義 (保持不變) ---
-const styles = {
+const styles: { [key: string]: React.CSSProperties } = {
   tableContainer: { marginTop: '30px', overflowX: 'auto', border: '1px solid #dee2e6', borderRadius: '6px' },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: '14px' },
   th: {
     backgroundColor: '#e9ecef', padding: '14px 12px', textAlign: 'left',
-    color: '#333740', fontWeight: '600', borderBottom: '2px solid #dee2e6',
+    color: '#333740', fontWeight: 600, borderBottom: '2px solid #dee2e6',
     cursor: 'pointer', userSelect: 'none',
     display: 'flex', alignItems: 'center', gap: '4px',
   },
@@ -36,12 +40,21 @@ const styles = {
   paginationSelect: { padding: '6px', border: '1px solid #dee2e6', borderRadius: '4px' }
 };
 
+// 【主要變更點 1】: 定義元件的 Props 類型
+// 我們使用泛型 TData 來讓這個表格元件可以接受任何類型的資料陣列
+interface TableProps<TData> {
+  data: TData[];
+  columns: ColumnDef<TData, any>[];
+}
+
 /**
- * @param {{ data: any[], columns: any[] }} props
+ * 支援客戶端分頁和排序的可重用表格元件
+ * @param {TableProps<TData>} props
  */
-export const Table = ({ data, columns }) => {
-  const [sorting, setSorting] = React.useState([]);
-  const [pagination, setPagination] = React.useState({
+export const Table = <TData extends object>({ data, columns }: TableProps<TData>) => {
+  // 【主要變更點 2】: 為內部狀態提供明確的類型
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
     pageSize: 50,
   });
@@ -76,9 +89,17 @@ export const Table = ({ data, columns }) => {
                   onClick={header.column.getCanSort() ? header.column.getToggleSortingHandler() : undefined}
                 >
                   <div style={styles.th}>
-                    {flexRender(header.column.columnDef.header, header.getContext())}
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(
+                          header.column.columnDef.header,
+                          header.getContext()
+                        )}
                     <span style={styles.sortIcon}>
-                      {{ asc: '▲', desc: '▼' }[header.column.getIsSorted()] ?? null}
+                      {{
+                        asc: '▲',
+                        desc: '▼',
+                      }[header.column.getIsSorted() as string] ?? null}
                     </span>
                   </div>
                 </th>
@@ -164,7 +185,7 @@ export const Table = ({ data, columns }) => {
                             </span>
                         </div>
                         <div style={styles.paginationControls}>
-                            <select
+                             <select
                                 style={styles.paginationSelect}
                                 value={table.getState().pagination.pageSize}
                                 onChange={e => {
