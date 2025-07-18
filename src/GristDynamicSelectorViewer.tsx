@@ -8,64 +8,48 @@ import { Table } from './components/Table';
 
 const GRIST_API_BASE_URL = 'https://tiss-grist.fcuai.tw';
 
+// --- 【主要修正點 1】: 修正 styles 物件的類型定義 ---
+// 允許物件的值是 CSSProperties 物件，或是一個返回 CSSProperties 的函數
 const styles: { [key: string]: React.CSSProperties | ((hasError: boolean) => React.CSSProperties) } = {
-  // ... styles object (內容不變) ...
-  container: { /* ... */ },
-  // ...
+  container: {
+    fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',
+    color: '#333740',
+    backgroundColor: '#ffffff',
+    maxWidth: '1000px',
+    width: '100%',
+    padding: '40px',
+    borderRadius: '8px',
+    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+    margin: '0 20px',
+  },
+  header: { textAlign: 'center', marginBottom: '30px' },
+  title: { fontSize: '28px', fontWeight: 600, color: '#333740', marginBottom: '10px' },
+  subtitle: { color: '#777f8d', fontSize: '14px' },
+  statusMessage: (hasError: boolean) => ({
+    padding: '12px 18px', margin: '20px 0', borderRadius: '6px',
+    textAlign: 'center', fontSize: '14px', fontWeight: 500,
+    border: `1px solid ${hasError ? '#dc3545' : '#28a745'}`,
+    backgroundColor: hasError ? '#fdecea' : '#e9f7ef',
+    color: hasError ? '#dc3545' : '#28a745',
+  }),
+  card: { padding: '25px', marginTop: '25px', border: '1px solid #dee2e6', borderRadius: '6px', backgroundColor: '#f8f9fa' },
+  inputBase: {
+    width: '100%', padding: '12px', fontSize: '16px',
+    border: '1px solid #dee2e6', borderRadius: '6px', boxSizing: 'border-box',
+    transition: 'border-color 0.2s, box-shadow 0.2s',
+  },
+  buttonBase: {
+    padding: '12px 20px', fontSize: '16px', fontWeight: 500,
+    border: 'none', borderRadius: '6px', cursor: 'pointer',
+    transition: 'background-color 0.2s, transform 0.1s',
+  },
+  buttonPrimary: { backgroundColor: '#007bff', color: '#ffffff' },
+  buttonSecondary: { backgroundColor: '#6c757d', color: '#ffffff' },
 };
 
-// --- 為 GristApiKeyManager 定義 Props 和 Ref 的類型 ---
-interface ApiKeyManagerProps {
-  apiKey: string;
-  onApiKeyUpdate: (key: string, autoFetched?: boolean) => void;
-  onStatusUpdate: (message: string) => void;
-}
-interface ApiKeyManagerRef {
-  // 暴露出去的方法名稱
-  triggerFetchKeyFromProfile: () => Promise<boolean>;
-}
-
-const GristApiKeyManager = React.forwardRef<ApiKeyManagerRef, ApiKeyManagerProps>(
-  ({ apiKey, onApiKeyUpdate, onStatusUpdate }, ref) => {
-    const [localApiKey, setLocalApiKey] = useState<string>(apiKey || '');
-    useEffect(() => { setLocalApiKey(apiKey || ''); }, [apiKey]);
-    
-    const fetchKeyFromProfile = useCallback(async (): Promise<boolean> => {
-      try {
-        const response = await fetch(`${GRIST_API_BASE_URL}/api/profile/apiKey`, { credentials: 'include', headers: { 'Accept': 'text/plain' } });
-        const fetchedKey = await response.text();
-        if (!response.ok || !fetchedKey || fetchedKey.includes('<') || fetchedKey.length < 32) {
-          if (!apiKey) onStatusUpdate(`自動獲取失敗，請先登入 Grist。`);
-          return false;
-        }
-        onApiKeyUpdate(fetchedKey.trim(), true);
-        return true;
-      } catch (error) {
-        if (!apiKey) onStatusUpdate(`自動獲取失敗，請檢查網路連線或 Grist 服務狀態。`);
-        return false;
-      }
-    }, [apiKey, onApiKeyUpdate, onStatusUpdate]);
-
-    // --- 【主要修正點】: 將暴露的方法物件的鍵名改為 'triggerFetchKeyFromProfile' ---
-    React.useImperativeHandle(ref, () => ({
-        triggerFetchKeyFromProfile: fetchKeyFromProfile 
-    }), [fetchKeyFromProfile]);
-
-    const handleManualSubmit = () => {
-      if (localApiKey.trim()) onApiKeyUpdate(localApiKey.trim(), false);
-      else onStatusUpdate('請輸入有效的 API Key');
-    };
-
-    return (
-      <div style={styles.card as React.CSSProperties}>
-        <h4 style={{ marginTop: '0', marginBottom: '15px' }}>API Key 管理</h4>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <input type="password" value={localApiKey} onChange={(e) => setLocalApiKey(e.target.value)} placeholder="在此輸入或貼上 Grist API Key" style={styles.inputBase as React.CSSProperties}/>
-          <button onClick={handleManualSubmit} style={{...(styles.buttonBase as React.CSSProperties), backgroundColor: '#e9ecef', color: '#333740' }}>手動設定</button>
-        </div>
-      </div>
-    );
-});
+// --- 為 GristApiKeyManager (如果保留) 或其他組件定義 Props 和 Ref 的類型 ---
+// 在最新版本中，我們移除了這個組件，所以這段可以省略
+// interface ...
 
 // 主組件
 const GristDynamicSelectorViewer: React.FC = () => {
@@ -75,24 +59,21 @@ const GristDynamicSelectorViewer: React.FC = () => {
     const [selectedDocId, setSelectedDocId] = useState<string>('');
     const [selectedTableId, setSelectedTableId] = useState<string>('');
     
-    // 【重要】: 雖然 useGristLogin 很好，但如果您決定保留 GristApiKeyManager，
-    // 我們需要一個 Ref 來引用它。
-    const apiKeyManagerRef = useRef<ApiKeyManagerRef>(null);
-
-    const handleApiKeyUpdate = useCallback((key: string, autoFetched: boolean = false) => {
+    const handleApiKeyUpdate = useCallback((key: string) => {
         setApiKey(key);
         setShowLoginPrompt(false);
         if (key) {
             localStorage.setItem('gristApiKey', key);
-            setStatusMessage(autoFetched ? '成功與 Grist 會話同步！' : 'API Key 已手動設定。');
+            setStatusMessage('成功獲取 API Key！');
         } else {
             localStorage.removeItem('gristApiKey');
         }
     }, []);
 
-    // 這裡我們暫時不使用 useGristLogin，而是使用 ref 來手動觸發
-    // 如果您想切換回 useGristLogin，只需取消註解下一行，並註解掉 apiKeyManagerRef 的相關邏輯
-    // const { openLoginPopup, fetchKey } = useGristLogin(...);
+    const { openLoginPopup, fetchKey } = useGristLogin({
+        onSuccess: handleApiKeyUpdate,
+        onStatusUpdate: setStatusMessage,
+    });
     
     const {
         isLoading,
@@ -115,9 +96,8 @@ const GristDynamicSelectorViewer: React.FC = () => {
     });
 
     useEffect(() => {
-        // 在組件掛載時，使用 ref 來觸發自動獲取
-        apiKeyManagerRef.current?.triggerFetchKeyFromProfile();
-    }, []);
+        fetchKey();
+    }, [fetchKey]);
 
     useEffect(() => {
         if (!apiKey && !localStorage.getItem('gristApiKey')) {
@@ -133,25 +113,25 @@ const GristDynamicSelectorViewer: React.FC = () => {
                 <h1 style={styles.title as React.CSSProperties}>Grist 數據動態選擇查看器</h1>
                 <p style={styles.subtitle as React.CSSProperties}>API 目標: <code>{GRIST_API_BASE_URL}</code></p>
             </div>
-
-            {statusMessage && <p style={(styles.statusMessage as (hasError: boolean) => React.CSSProperties)(hasErrorStatus)}>{hasErrorStatus ? '⚠️ ' : '✅ '}{isLoading ? '處理中... ' : ''}{statusMessage}</p>}
-            {dataError && <p style={{...(styles.statusMessage as (hasError: boolean) => React.CSSProperties)(true), marginTop: '15px' }}>⚠️ 錯誤: {dataError}</p>}
             
-            {/* GristApiKeyManager 現在被保留了 */}
-            <GristApiKeyManager 
-                ref={apiKeyManagerRef} 
-                apiKey={apiKey} 
-                onApiKeyUpdate={handleApiKeyUpdate}
-                onStatusUpdate={setStatusMessage}
-            />
+            {/* --- 【主要修正點 2】: 進行類型斷言，告訴 TS 我們確定 statusMessage 是一個函數 --- */}
+            {statusMessage && (
+              <p style={(styles.statusMessage as (hasError: boolean) => React.CSSProperties)(hasErrorStatus)}>
+                {hasErrorStatus ? '⚠️ ' : '✅ '}{isLoading ? '處理中... ' : ''}{statusMessage}
+              </p>
+            )}
+            {dataError && (
+              <p style={{ ...((styles.statusMessage as (hasError: boolean) => React.CSSProperties)(true)), marginTop: '15px' }}>
+                ⚠️ 錯誤: {dataError}
+              </p>
+            )}
 
             {showLoginPrompt && !apiKey && (
             <div style={{ ...(styles.card as React.CSSProperties), textAlign: 'center', backgroundColor: '#fdecea', borderColor: '#dc3545' }}>
                 <p style={{ margin: '0 0 15px 0', fontWeight: 500, color: '#dc3545' }}>需要有效的 API Key 才能繼續操作。</p>
                 <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-                    {/* 這裡我們假設有一個全局的 openLoginPopup 函數或使用 window.open */}
-                    <button onClick={() => window.open(`${GRIST_API_BASE_URL}/login`, 'GristLoginPopup', 'width=600,height=700')} style={{...(styles.buttonBase as React.CSSProperties), ...(styles.buttonPrimary as React.CSSProperties)}}>開啟 Grist 登入</button>
-                    <button onClick={() => apiKeyManagerRef.current?.triggerFetchKeyFromProfile()} style={{...(styles.buttonBase as React.CSSProperties), ...(styles.buttonSecondary as React.CSSProperties)}}>重試獲取 Key</button>
+                    <button onClick={openLoginPopup} style={{...(styles.buttonBase as React.CSSProperties), ...(styles.buttonPrimary as React.CSSProperties)}}>開啟 Grist 登入</button>
+                    <button onClick={fetchKey} style={{...(styles.buttonBase as React.CSSProperties), ...(styles.buttonSecondary as React.CSSProperties)}}>重試獲取 Key</button>
                 </div>
             </div>
             )}
