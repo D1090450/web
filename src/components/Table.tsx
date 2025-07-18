@@ -5,7 +5,6 @@ import {
   getSortedRowModel,
   getPaginationRowModel,
   flexRender,
-  // 導入類型定義
   ColumnDef,
   SortingState,
   PaginationState,
@@ -40,19 +39,12 @@ const styles: { [key: string]: React.CSSProperties } = {
   paginationSelect: { padding: '6px', border: '1px solid #dee2e6', borderRadius: '4px' }
 };
 
-// 【主要變更點 1】: 定義元件的 Props 類型
-// 我們使用泛型 TData 來讓這個表格元件可以接受任何類型的資料陣列
 interface TableProps<TData> {
   data: TData[];
   columns: ColumnDef<TData, any>[];
 }
 
-/**
- * 支援客戶端分頁和排序的可重用表格元件
- * @param {TableProps<TData>} props
- */
 export const Table = <TData extends object>({ data, columns }: TableProps<TData>) => {
-  // 【主要變更點 2】: 為內部狀態提供明確的類型
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
@@ -133,33 +125,34 @@ export const Table = <TData extends object>({ data, columns }: TableProps<TData>
                 <td colSpan={columns.length} style={{ padding: 0 }}>
                     <div style={styles.paginationContainer}>
                         <div style={styles.paginationControls}>
+                            {/* --- 【主要修正點】: 使用 Unicode 字串替換特殊符號 --- */}
                             <button
                                 style={{ ...styles.paginationButton, ...( !table.getCanPreviousPage() && styles.paginationButtonDisabled) }}
                                 onClick={() => table.setPageIndex(0)}
                                 disabled={!table.getCanPreviousPage()}
                             >
-                                {'<<'}
+                                {'\u00ab'} {/* << */}
                             </button>
                             <button
                                 style={{ ...styles.paginationButton, ...( !table.getCanPreviousPage() && styles.paginationButtonDisabled) }}
                                 onClick={() => table.previousPage()}
                                 disabled={!table.getCanPreviousPage()}
                             >
-                                {'<'}
+                                {'\u003c'} {/* < */}
                             </button>
                             <button
                                 style={{ ...styles.paginationButton, ...( !table.getCanNextPage() && styles.paginationButtonDisabled) }}
                                 onClick={() => table.nextPage()}
                                 disabled={!table.getCanNextPage()}
                             >
-                                {'>'}
+                                {'\u003e'} {/* > */}
                             </button>
                             <button
                                 style={{ ...styles.paginationButton, ...( !table.getCanNextPage() && styles.paginationButtonDisabled) }}
                                 onClick={() => table.setPageIndex(table.getPageCount() - 1)}
                                 disabled={!table.getCanNextPage()}
                             >
-                                {'>>'}
+                                {'\u00bb'} {/* >> */}
                             </button>
                         </div>
                         <div style={styles.paginationControls}>
