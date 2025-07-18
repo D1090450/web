@@ -9,7 +9,6 @@ import {
   SortingState,
   PaginationState,
 } from '@tanstack/react-table';
-// --- 【主要修正點 1】: 從 react-icons 導入圖標 ---
 import {
   BiChevronsLeft,
   BiChevronLeft,
@@ -17,7 +16,7 @@ import {
   BiChevronsRight
 } from 'react-icons/bi';
 
-// --- 樣式定義 (微調按鈕樣式) ---
+// --- 樣式定義 ---
 const styles: { [key: string]: React.CSSProperties } = {
   tableContainer: { marginTop: '30px', overflowX: 'auto', border: '1px solid #dee2e6', borderRadius: '6px' },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: '14px' },
@@ -34,16 +33,20 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '16px', flexWrap: 'wrap', gap: '16px',
   },
   paginationControls: { display: 'flex', alignItems: 'center', gap: '8px' },
-  // 【主要修正點 2】: 微調按鈕樣式以適應圖標
+  // --- 【主要修正點】: 為按鈕添加 color 屬性 ---
   paginationButton: {
-    padding: '6px', // 讓按鈕更方正
-    border: '1px solid #dee2e6', backgroundColor: '#ffffff',
-    borderRadius: '4px', cursor: 'pointer',
-    display: 'flex', // 使用 Flexbox
-    alignItems: 'center', // 垂直置中
-    justifyContent: 'center', // 水平置中
+    padding: '6px',
+    border: '1px solid #dee2e6', 
+    backgroundColor: '#ffffff',
+    borderRadius: '4px', 
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    // 增加這一行，讓 SVG 圖標繼承這個顏色
+    color: '#333740', 
   },
-  paginationButtonDisabled: { cursor: 'not-allowed', opacity: 0.5 },
+  paginationButtonDisabled: { cursor: 'not-allowed', opacity: 0.5, color: '#adb5bd' }, // 也為禁用狀態指定顏色
   paginationInput: {
     width: '50px', padding: '6px', border: '1px solid #dee2e6',
     borderRadius: '4px', textAlign: 'center',
@@ -93,17 +96,9 @@ export const Table = <TData extends object>({ data, columns }: TableProps<TData>
                   onClick={header.column.getCanSort() ? header.column.getToggleSortingHandler() : undefined}
                 >
                   <div style={styles.th}>
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext()
-                        )}
+                    {flexRender(header.column.columnDef.header, header.getContext())}
                     <span style={styles.sortIcon}>
-                      {{
-                        asc: '▲',
-                        desc: '▼',
-                      }[header.column.getIsSorted() as string] ?? null}
+                      {{ asc: '▲', desc: '▼' }[header.column.getIsSorted() as string] ?? null}
                     </span>
                   </div>
                 </th>
@@ -137,30 +132,29 @@ export const Table = <TData extends object>({ data, columns }: TableProps<TData>
                 <td colSpan={columns.length} style={{ padding: 0 }}>
                     <div style={styles.paginationContainer}>
                         <div style={styles.paginationControls}>
-                            {/* --- 【主要修正點 3】: 使用圖標元件替換文字 --- */}
                             <button
-                                style={{ ...styles.paginationButton, ...( !table.getCanPreviousPage() && styles.paginationButtonDisabled) }}
+                                style={{ ...styles.paginationButton, ...(!table.getCanPreviousPage() && styles.paginationButtonDisabled) }}
                                 onClick={() => table.setPageIndex(0)}
                                 disabled={!table.getCanPreviousPage()}
                             >
                                 <BiChevronsLeft size={18} />
                             </button>
                             <button
-                                style={{ ...styles.paginationButton, ...( !table.getCanPreviousPage() && styles.paginationButtonDisabled) }}
+                                style={{ ...styles.paginationButton, ...(!table.getCanPreviousPage() && styles.paginationButtonDisabled) }}
                                 onClick={() => table.previousPage()}
                                 disabled={!table.getCanPreviousPage()}
                             >
                                 <BiChevronLeft size={18} />
                             </button>
                             <button
-                                style={{ ...styles.paginationButton, ...( !table.getCanNextPage() && styles.paginationButtonDisabled) }}
+                                style={{ ...styles.paginationButton, ...(!table.getCanNextPage() && styles.paginationButtonDisabled) }}
                                 onClick={() => table.nextPage()}
                                 disabled={!table.getCanNextPage()}
                             >
                                 <BiChevronRight size={18} />
                             </button>
                             <button
-                                style={{ ...styles.paginationButton, ...( !table.getCanNextPage() && styles.paginationButtonDisabled) }}
+                                style={{ ...styles.paginationButton, ...(!table.getCanNextPage() && styles.paginationButtonDisabled) }}
                                 onClick={() => table.setPageIndex(table.getPageCount() - 1)}
                                 disabled={!table.getCanNextPage()}
                             >
