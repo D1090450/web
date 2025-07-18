@@ -10,7 +10,7 @@ import {
   PaginationState,
 } from '@tanstack/react-table';
 
-// --- 樣式定義 (保持不變) ---
+// --- 樣式定義 ---
 const styles: { [key: string]: React.CSSProperties } = {
   tableContainer: { marginTop: '30px', overflowX: 'auto', border: '1px solid #dee2e6', borderRadius: '6px' },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: '14px' },
@@ -18,10 +18,17 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: '#e9ecef', padding: '14px 12px', textAlign: 'left',
     color: '#333740', fontWeight: 600, borderBottom: '2px solid #dee2e6',
     cursor: 'pointer', userSelect: 'none',
-    display: 'flex', alignItems: 'center', gap: '4px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px', 
   },
   td: { padding: '12px', whiteSpace: 'nowrap', color: '#555e6d', borderBottom: '1px solid #dee2e6' },
-  sortIcon: { fontSize: '12px', opacity: 0.8 },
+  sortIcon: {
+    width: '1em',
+    height: '1em',
+    fontSize: '12px',
+    opacity: 0.8,
+  },
   paginationContainer: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     padding: '16px', flexWrap: 'wrap', gap: '16px',
@@ -54,10 +61,7 @@ export const Table = <TData extends object>({ data, columns }: TableProps<TData>
   const table = useReactTable({
     data,
     columns,
-    state: {
-      sorting,
-      pagination,
-    },
+    state: { sorting, pagination },
     onSortingChange: setSorting,
     onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
@@ -75,25 +79,24 @@ export const Table = <TData extends object>({ data, columns }: TableProps<TData>
                 <th
                   key={header.id}
                   style={{
+                    ...styles.th,
                     ...(header.id === 'id' && { position: 'sticky', left: 0, zIndex: 2, backgroundColor: '#e9ecef' }),
-                    ...(header.column.getCanSort() === false && { display: 'table-cell' })
+                    ...(header.column.getCanSort() === false && { display: 'table-cell' }) // 對不可排序的欄位恢復預設 display
                   }}
                   onClick={header.column.getCanSort() ? header.column.getToggleSortingHandler() : undefined}
                 >
-                  <div style={styles.th}>
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext()
-                        )}
-                    <span style={styles.sortIcon}>
-                      {{
-                        asc: '▲',
-                        desc: '▼',
-                      }[header.column.getIsSorted() as string] ?? null}
-                    </span>
-                  </div>
+                  {header.isPlaceholder
+                    ? null
+                    : flexRender(
+                        header.column.columnDef.header,
+                        header.getContext()
+                      )}
+                  <span style={styles.sortIcon}>
+                    {{
+                      asc: '▲',
+                      desc: '▼',
+                    }[header.column.getIsSorted() as string] ?? null}
+                  </span>
                 </th>
               ))}
             </tr>
@@ -125,42 +128,39 @@ export const Table = <TData extends object>({ data, columns }: TableProps<TData>
                 <td colSpan={columns.length} style={{ padding: 0 }}>
                     <div style={styles.paginationContainer}>
                         <div style={styles.paginationControls}>
-                            {/* --- 【主要修正點】: 使用 Unicode 字串替換特殊符號 --- */}
+                            {/* 【主要修正點 3】: 使用最簡單直接的字串，它們是可靠的 */}
                             <button
                                 style={{ ...styles.paginationButton, ...( !table.getCanPreviousPage() && styles.paginationButtonDisabled) }}
                                 onClick={() => table.setPageIndex(0)}
                                 disabled={!table.getCanPreviousPage()}
                             >
-                                {'\u00ab'} {/* << */}
+                                {'<<'}
                             </button>
                             <button
                                 style={{ ...styles.paginationButton, ...( !table.getCanPreviousPage() && styles.paginationButtonDisabled) }}
                                 onClick={() => table.previousPage()}
                                 disabled={!table.getCanPreviousPage()}
                             >
-                                {'\u003c'} {/* < */}
+                                {'<'}
                             </button>
                             <button
                                 style={{ ...styles.paginationButton, ...( !table.getCanNextPage() && styles.paginationButtonDisabled) }}
                                 onClick={() => table.nextPage()}
                                 disabled={!table.getCanNextPage()}
                             >
-                                {'\u003e'} {/* > */}
+                                {'>'}
                             </button>
                             <button
                                 style={{ ...styles.paginationButton, ...( !table.getCanNextPage() && styles.paginationButtonDisabled) }}
                                 onClick={() => table.setPageIndex(table.getPageCount() - 1)}
                                 disabled={!table.getCanNextPage()}
                             >
-                                {'\u00bb'} {/* >> */}
+                                {'>>'}
                             </button>
                         </div>
                         <div style={styles.paginationControls}>
                             <span>
-                                第{' '}
-                                <strong>
-                                    {table.getState().pagination.pageIndex + 1} / {table.getPageCount()} 頁
-                                </strong>
+                                第{' '}<strong>{table.getState().pagination.pageIndex + 1} / {table.getPageCount()} 頁</strong>
                             </span>
                             <span>
                                 | 跳至:
@@ -178,12 +178,10 @@ export const Table = <TData extends object>({ data, columns }: TableProps<TData>
                             </span>
                         </div>
                         <div style={styles.paginationControls}>
-                             <select
+                            <select
                                 style={styles.paginationSelect}
                                 value={table.getState().pagination.pageSize}
-                                onChange={e => {
-                                    table.setPageSize(Number(e.target.value));
-                                }}
+                                onChange={e => { table.setPageSize(Number(e.target.value)); }}
                             >
                                 {[10, 20, 50, 100].map(pageSize => (
                                     <option key={pageSize} value={pageSize}>
