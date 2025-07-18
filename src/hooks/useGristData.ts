@@ -3,8 +3,7 @@ import { ColumnDef } from '@tanstack/react-table';
 import { CellRenderer } from '../components/CellRenderer';
 import { GristType } from '../utils/validation';
 
-// --- 類型定義 ---
-// 【主要修正點 1】: 為 Organization 建立明確的類型
+// --- 类型定义 ---
 interface Organization {
   id: number;
   name: string;
@@ -16,9 +15,9 @@ interface GristDocument {
   workspaceName: string;
   displayName: string;
 }
+// 修正：GristTable 接口只包含 id
 interface GristTable {
   id: string;
-  name: string;
 }
 interface GristColumn {
   id: string;
@@ -37,18 +36,18 @@ export interface GristRecord {
 const GRIST_API_BASE_URL = 'https://tiss-grist.fcuai.tw';
 const TARGET_ORG_DOMAIN = 'fcuai.tw';
 
-// --- 輔助函數區塊 ---
+// --- 辅助函数区块 ---
 const apiRequest = async <T>(endpoint: string, apiKey: string, method: 'GET' | 'POST' = 'GET', params: Record<string, any> | null = null): Promise<T> => {
-    if (!apiKey) return Promise.reject(new Error('API Key 未設定'));
+    if (!apiKey) return Promise.reject(new Error('API Key 未设定'));
     let url = `${GRIST_API_BASE_URL}${endpoint}`;
     if (params) {
         const queryParams = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && v !== ''));
         if (queryParams.toString()) url += `?${queryParams.toString()}`;
     }
     const response = await fetch(url, { method, headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' } });
-    const responseData = await response.json().catch(() => { throw new Error('非 JSON 響應'); });
+    const responseData = await response.json().catch(() => { throw new Error('非 JSON 响应'); });
     if (!response.ok) {
-        const error = new Error((responseData as any)?.error?.message || `請求失敗 (HTTP ${response.status})`);
+        const error = new Error((responseData as any)?.error?.message || `请求失败 (HTTP ${response.status})`);
         (error as any).status = response.status;
         throw error;
     }
@@ -84,16 +83,16 @@ const applyLocalFilters = (data: GristRecord[], filters: any): GristRecord[] => 
             }
         }
         if (filters.gender && filters.gender !== 'all') {
-            if (fields['性別'] !== (filters.gender === 'male' ? '男' : '女')) return false;
+            if (fields['性别'] !== (filters.gender === 'male' ? '男' : '女')) return false;
         }
         if (filters.title && filters.title.trim() !== '') {
-            if (!fields['職稱'] || !String(fields['職稱']).toLowerCase().includes(filters.title.trim().toLowerCase())) return false;
+            if (!fields['职称'] || !String(fields['职称']).toLowerCase().includes(filters.title.trim().toLowerCase())) return false;
         }
         return true;
     });
 };
 
-// --- Hook Props 和返回值的類型定義 ---
+// --- Hook Props 和返回值的类型定义 ---
 interface UseGristDataProps {
   apiKey: string;
   selectedDocId: string;
@@ -110,7 +109,7 @@ interface UseGristDataReturn {
   handleFilterChange: React.Dispatch<React.SetStateAction<any | null>>;
 }
 
-// --- 自定義 Hook 主體 ---
+// --- 自定义 Hook 主体 ---
 export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthError }: UseGristDataProps): UseGristDataReturn => {
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string>('');
@@ -129,28 +128,20 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         else { setError(err.message); }
     }, []);
 
-    // 獲取文檔列表
+    // 获取文档列表
     useEffect(() => {
         if (!apiKey) { setDocuments([]); return; }
         const getOrgAndDocs = async () => {
             setIsLoading(true); setError('');
             try {
-                // 【主要修正點 2】: 使用 Organization | Organization[] 聯合類型
                 const orgsData = await apiRequest<Organization | Organization[]>('/api/orgs', apiKey);
-                
                 let determinedOrg: Organization | undefined;
-
-                // 【主要修正點 3】: 使用 Array.isArray 作為類型防護
                 if (Array.isArray(orgsData)) {
-                    // 在此區塊中，TypeScript 知道 orgsData 是一個陣列
                     determinedOrg = orgsData.find(org => org.domain === TARGET_ORG_DOMAIN) || orgsData[0];
                 } else {
-                    // 在此區塊中，TypeScript 知道 orgsData 是一個單一物件
                     determinedOrg = orgsData;
                 }
-
-                if (!determinedOrg?.id) throw new Error('未能確定目標組織');
-
+                if (!determinedOrg?.id) throw new Error('未能确定目标组织');
                 const workspaces = await apiRequest<any[]>(`/api/orgs/${determinedOrg.id}/workspaces`, apiKey);
                 const allDocs: any[] = [], docNameCounts: {[key: string]: number} = {};
                 workspaces.forEach(ws => { ws.docs?.forEach((doc: any) => { docNameCounts[doc.name] = (docNameCounts[doc.name] || 0) + 1; allDocs.push({ ...doc, workspaceName: ws.name }); }); });
@@ -162,7 +153,7 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         getOrgAndDocs();
     }, [apiKey, handleApiError]);
 
-    // 獲取表格列表
+    // 获取表格列表
     useEffect(() => {
         if (!selectedDocId || !apiKey) { setTables([]); return; }
         const fetchTables = async () => {
@@ -176,7 +167,7 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         fetchTables();
     }, [selectedDocId, apiKey, handleApiError]);
 
-    // 獲取數據和欄位結構
+    // 获取数据和字段结构
     useEffect(() => {
         if (!selectedTableId || !apiKey) {
             setRawData(null); setColumnSchema(null); return;
@@ -197,7 +188,7 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         fetchDataAndSchema();
     }, [selectedTableId, selectedDocId, apiKey, handleApiError]);
     
-    // 動態產生欄位定義
+    // 动态产生字段定义
     const tableColumns = useMemo((): ColumnDef<GristRecord, any>[] => {
         if (!columnSchema) return [];
         const idColumn: ColumnDef<GristRecord, any> = {
@@ -220,7 +211,7 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         return [idColumn, ...otherColumns];
     }, [columnSchema]);
 
-    // 處理本地篩選
+    // 处理本地筛选
     useEffect(() => {
         if (!rawData) { setFilteredData(null); return; }
         setFilteredData(applyLocalFilters(rawData, activeFilters));

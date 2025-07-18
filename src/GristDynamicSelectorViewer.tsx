@@ -1,6 +1,6 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 
-// --- Imports (使用 .ts/.tsx 版本) ---
+// --- Imports ---
 import { useGristLogin } from './hooks/useGristLogin';
 import { useGristData } from './hooks/useGristData';
 import Filter from './components/Filter';
@@ -8,8 +8,6 @@ import { Table } from './components/Table';
 
 const GRIST_API_BASE_URL = 'https://tiss-grist.fcuai.tw';
 
-// --- 【主要修正點 1】: 修正 styles 物件的類型定義 ---
-// 允許物件的值是 CSSProperties 物件，或是一個返回 CSSProperties 的函數
 const styles: { [key: string]: React.CSSProperties | ((hasError: boolean) => React.CSSProperties) } = {
   container: {
     fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',
@@ -46,10 +44,6 @@ const styles: { [key: string]: React.CSSProperties | ((hasError: boolean) => Rea
   buttonPrimary: { backgroundColor: '#007bff', color: '#ffffff' },
   buttonSecondary: { backgroundColor: '#6c757d', color: '#ffffff' },
 };
-
-// --- 為 GristApiKeyManager (如果保留) 或其他組件定義 Props 和 Ref 的類型 ---
-// 在最新版本中，我們移除了這個組件，所以這段可以省略
-// interface ...
 
 // 主組件
 const GristDynamicSelectorViewer: React.FC = () => {
@@ -105,7 +99,7 @@ const GristDynamicSelectorViewer: React.FC = () => {
         }
     }, [apiKey]);
     
-    const hasErrorStatus = statusMessage.includes('失敗') || statusMessage.includes('錯誤') || statusMessage.includes('失效') || !!dataError;
+    const hasErrorStatus = !!dataError || ['失敗', '錯誤', '失效'].some(term => statusMessage.includes(term));
   
     return (
         <div style={styles.container as React.CSSProperties}>
@@ -113,27 +107,18 @@ const GristDynamicSelectorViewer: React.FC = () => {
                 <h1 style={styles.title as React.CSSProperties}>Grist 數據動態選擇查看器</h1>
                 <p style={styles.subtitle as React.CSSProperties}>API 目標: <code>{GRIST_API_BASE_URL}</code></p>
             </div>
-            
-            {/* --- 【主要修正點 2】: 進行類型斷言，告訴 TS 我們確定 statusMessage 是一個函數 --- */}
-            {statusMessage && (
-              <p style={(styles.statusMessage as (hasError: boolean) => React.CSSProperties)(hasErrorStatus)}>
-                {hasErrorStatus ? '⚠️ ' : '✅ '}{isLoading ? '處理中... ' : ''}{statusMessage}
-              </p>
-            )}
-            {dataError && (
-              <p style={{ ...((styles.statusMessage as (hasError: boolean) => React.CSSProperties)(true)), marginTop: '15px' }}>
-                ⚠️ 錯誤: {dataError}
-              </p>
-            )}
+
+            {statusMessage && <p style={(styles.statusMessage as (hasError: boolean) => React.CSSProperties)(hasErrorStatus)}>{hasErrorStatus ? '⚠️ ' : '✅ '}{isLoading ? '處理中... ' : ''}{statusMessage}</p>}
+            {dataError && <p style={{ ...((styles.statusMessage as (hasError: boolean) => React.CSSProperties)(true)), marginTop: '15px' }}>⚠️ 錯誤: {dataError}</p>}
 
             {showLoginPrompt && !apiKey && (
-            <div style={{ ...(styles.card as React.CSSProperties), textAlign: 'center', backgroundColor: '#fdecea', borderColor: '#dc3545' }}>
-                <p style={{ margin: '0 0 15px 0', fontWeight: 500, color: '#dc3545' }}>需要有效的 API Key 才能繼續操作。</p>
-                <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-                    <button onClick={openLoginPopup} style={{...(styles.buttonBase as React.CSSProperties), ...(styles.buttonPrimary as React.CSSProperties)}}>開啟 Grist 登入</button>
-                    <button onClick={fetchKey} style={{...(styles.buttonBase as React.CSSProperties), ...(styles.buttonSecondary as React.CSSProperties)}}>重試獲取 Key</button>
+                <div style={{ ...(styles.card as React.CSSProperties), textAlign: 'center', backgroundColor: '#fdecea', borderColor: '#dc3545' }}>
+                    <p style={{ margin: '0 0 15px 0', fontWeight: 500, color: '#dc3545' }}>需要有效的 API Key 才能繼續操作。</p>
+                    <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                        <button onClick={openLoginPopup} style={{...(styles.buttonBase as React.CSSProperties), ...(styles.buttonPrimary as React.CSSProperties)}}>開啟 Grist 登入</button>
+                        <button onClick={fetchKey} style={{...(styles.buttonBase as React.CSSProperties), ...(styles.buttonSecondary as React.CSSProperties)}}>重試獲取 Key</button>
+                    </div>
                 </div>
-            </div>
             )}
 
             {apiKey && (
@@ -151,7 +136,12 @@ const GristDynamicSelectorViewer: React.FC = () => {
                     <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>選擇表格:</label>
                     <select value={selectedTableId} onChange={(e) => { setSelectedTableId(e.target.value); }} disabled={isLoading || tables.length === 0} style={styles.inputBase as React.CSSProperties}>
                         <option value="">{isLoading && !tables.length ? '加載中...' : (tables.length === 0 ? '無可用表格' : '-- 請選擇 --')}</option>
-                        {tables.map((table) => (<option key={table.id} value={table.id}>{table.name}</option>))}
+                        {/* --- 【主要修正點】: 使用 table.id 來作為 key, value 和顯示的文字 --- */}
+                        {tables.map((table) => (
+                            <option key={table.id} value={table.id}>
+                                {table.id}
+                            </option>
+                        ))}
                     </select>
                 </div>
                 )}
