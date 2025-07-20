@@ -123,10 +123,43 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
     const handleApiError = useCallback((err: any) => { /* ... */ }, []);
 
     // 獲取文檔和表格列表 (保持不變)
-    useEffect(() => { /* ... */ }, [apiKey, handleApiError]);
-    useEffect(() => { /* ... */ }, [selectedDocId, apiKey, handleApiError]);
+    useEffect(() => {
+        if (!apiKey) { setDocuments([]); return; }
+        const getOrgAndDocs = async () => {
+            setIsLoading(true); setError('');
+            try {
+                const orgsData = await apiRequest<Organization | Organization[]>('/api/orgs', apiKey);
+                let determinedOrg: Organization | undefined;
+                if (Array.isArray(orgsData)) {
+                    determinedOrg = orgsData.find(org => org.domain === TARGET_ORG_DOMAIN) || orgsData[0];
+                } else {
+                    determinedOrg = orgsData;
+                }
+                if (!determinedOrg?.id) throw new Error('未能确定目标组织');
+                const workspaces = await apiRequest<any[]>(`/api/orgs/${determinedOrg.id}/workspaces`, apiKey);
+                const allDocs: any[] = [], docNameCounts: {[key: string]: number} = {};
+                workspaces.forEach(ws => { ws.docs?.forEach((doc: any) => { docNameCounts[doc.name] = (docNameCounts[doc.name] || 0) + 1; allDocs.push({ ...doc, workspaceName: ws.name }); }); });
+                const processedDocs = allDocs.map(doc => ({ ...doc, displayName: docNameCounts[doc.name] > 1 ? `${doc.name} (${doc.workspaceName})` : doc.name }));
+                setDocuments(processedDocs);
+            } catch (err) { handleApiError(err); setDocuments([]); } 
+            finally { setIsLoading(false); }
+        };
+        getOrgAndDocs();
+    }, [apiKey, handleApiError]);
 
-    // 【主要變更點 2】: 核心數據獲取邏輯更新
+    useEffect(() => {
+        if (!selectedDocId || !apiKey) { setTables([]); return; }
+        const fetchTables = async () => {
+            setIsLoading(true); setError('');
+            try {
+                const data = await apiRequest<{ tables: GristTable[] }>(`/api/docs/${selectedDocId}/tables`, apiKey);
+                setTables(data.tables || []);
+            } catch (err) { handleApiError(err); setTables([]); } 
+            finally { setIsLoading(false); }
+        };
+        fetchTables();
+    }, [selectedDocId, apiKey, handleApiError]);
+
     useEffect(() => {
         if (!selectedTableId || !apiKey) {
             setPageData([]);
