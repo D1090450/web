@@ -1,9 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   useReactTable,
   getCoreRowModel,
-  getSortedRowModel,
-  getPaginationRowModel,
   flexRender,
   ColumnDef,
   SortingState,
@@ -16,7 +14,7 @@ import {
   BiChevronsRight
 } from 'react-icons/bi';
 
-// --- 樣式定義 ---
+// --- 樣式定義 (保持不變) ---
 const styles: { [key: string]: React.CSSProperties } = {
   tableContainer: { marginTop: '30px', overflowX: 'auto', border: '1px solid #dee2e6', borderRadius: '6px' },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: '14px' },
@@ -33,20 +31,13 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: '16px', flexWrap: 'wrap', gap: '16px',
   },
   paginationControls: { display: 'flex', alignItems: 'center', gap: '8px' },
-  // --- 【主要修正點】: 為按鈕添加 color 屬性 ---
   paginationButton: {
-    padding: '6px',
-    border: '1px solid #dee2e6', 
-    backgroundColor: '#ffffff',
-    borderRadius: '4px', 
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    // 增加這一行，讓 SVG 圖標繼承這個顏色
+    padding: '6px', border: '1px solid #dee2e6', backgroundColor: '#ffffff',
+    borderRadius: '4px', cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
     color: '#333740', 
   },
-  paginationButtonDisabled: { cursor: 'not-allowed', opacity: 0.5, color: '#adb5bd' }, // 也為禁用狀態指定顏色
+  paginationButtonDisabled: { cursor: 'not-allowed', opacity: 0.5, color: '#adb5bd' },
   paginationInput: {
     width: '50px', padding: '6px', border: '1px solid #dee2e6',
     borderRadius: '4px', textAlign: 'center',
@@ -54,30 +45,49 @@ const styles: { [key: string]: React.CSSProperties } = {
   paginationSelect: { padding: '6px', border: '1px solid #dee2e6', borderRadius: '4px' }
 };
 
+// 【主要變更點 1】: 重新定義 Props，以接收所有分頁和排序的狀態與控制器
 interface TableProps<TData> {
   data: TData[];
   columns: ColumnDef<TData, any>[];
+  pageCount: number;
+  pagination: PaginationState;
+  setPagination: React.Dispatch<React.SetStateAction<PaginationState>>;
+  sorting: SortingState;
+  setSorting: React.Dispatch<React.SetStateAction<SortingState>>;
 }
 
-export const Table = <TData extends object>({ data, columns }: TableProps<TData>) => {
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [pagination, setPagination] = useState<PaginationState>({
-    pageIndex: 0,
-    pageSize: 50,
-  });
+/**
+ * 支援伺服器端分頁和排序的可重用表格元件
+ * @param {TableProps<TData>} props
+ */
+export const Table = <TData extends object>({
+  data,
+  columns,
+  pageCount,
+  pagination,
+  setPagination,
+  sorting,
+  setSorting,
+}: TableProps<TData>) => {
+  
+  // 移除元件內部的 state，因為現在由父元件 (透過 useGristData Hook) 控制
 
   const table = useReactTable({
     data,
     columns,
+    pageCount: pageCount, // 傳入計算好的總頁數
     state: {
       sorting,
       pagination,
     },
+    // 【主要變更點 2】: 重新啟用手動模式
+    manualPagination: true,
+    manualSorting: true,
+    // 將狀態變更事件回傳給父元件
     onSortingChange: setSorting,
     onPaginationChange: setPagination,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
+    // 只需要核心模型，因為分頁和排序都在伺服器端處理
+    getCoreRowModel: getCoreRowModel(), 
   });
 
   return (
@@ -98,7 +108,10 @@ export const Table = <TData extends object>({ data, columns }: TableProps<TData>
                   <div style={styles.th}>
                     {flexRender(header.column.columnDef.header, header.getContext())}
                     <span style={styles.sortIcon}>
-                      {{ asc: '▲', desc: '▼' }[header.column.getIsSorted() as string] ?? null}
+                      {{
+                        asc: '▲',
+                        desc: '▼',
+                      }[header.column.getIsSorted() as string] ?? null}
                     </span>
                   </div>
                 </th>
@@ -127,34 +140,35 @@ export const Table = <TData extends object>({ data, columns }: TableProps<TData>
             </tr>
           ))}
         </tbody>
+        {/* 【主要變更點 3】: 恢復功能齊全的分頁 UI */}
         <tfoot>
             <tr>
                 <td colSpan={columns.length} style={{ padding: 0 }}>
                     <div style={styles.paginationContainer}>
                         <div style={styles.paginationControls}>
                             <button
-                                style={{ ...styles.paginationButton, ...(!table.getCanPreviousPage() && styles.paginationButtonDisabled) }}
+                                style={{ ...styles.paginationButton, ...( !table.getCanPreviousPage() && styles.paginationButtonDisabled) }}
                                 onClick={() => table.setPageIndex(0)}
                                 disabled={!table.getCanPreviousPage()}
                             >
                                 <BiChevronsLeft size={18} />
                             </button>
                             <button
-                                style={{ ...styles.paginationButton, ...(!table.getCanPreviousPage() && styles.paginationButtonDisabled) }}
+                                style={{ ...styles.paginationButton, ...( !table.getCanPreviousPage() && styles.paginationButtonDisabled) }}
                                 onClick={() => table.previousPage()}
                                 disabled={!table.getCanPreviousPage()}
                             >
                                 <BiChevronLeft size={18} />
                             </button>
                             <button
-                                style={{ ...styles.paginationButton, ...(!table.getCanNextPage() && styles.paginationButtonDisabled) }}
+                                style={{ ...styles.paginationButton, ...( !table.getCanNextPage() && styles.paginationButtonDisabled) }}
                                 onClick={() => table.nextPage()}
                                 disabled={!table.getCanNextPage()}
                             >
                                 <BiChevronRight size={18} />
                             </button>
                             <button
-                                style={{ ...styles.paginationButton, ...(!table.getCanNextPage() && styles.paginationButtonDisabled) }}
+                                style={{ ...styles.paginationButton, ...( !table.getCanNextPage() && styles.paginationButtonDisabled) }}
                                 onClick={() => table.setPageIndex(table.getPageCount() - 1)}
                                 disabled={!table.getCanNextPage()}
                             >

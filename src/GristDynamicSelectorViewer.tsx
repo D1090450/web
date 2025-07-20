@@ -69,13 +69,19 @@ const GristDynamicSelectorViewer: React.FC = () => {
         onStatusUpdate: setStatusMessage,
     });
     
+    // 從 useGristData Hook 獲取所有需要的狀態和函數
     const {
         isLoading,
         error: dataError,
         documents,
         tables,
         columns,
-        tableData,
+        pageData,
+        totalRecords, // 新增
+        pagination,   // 新增
+        setPagination,// 新增
+        sorting,      // 新增
+        setSorting,   // 新增
         handleFilterChange,
     } = useGristData({
         apiKey,
@@ -88,6 +94,9 @@ const GristDynamicSelectorViewer: React.FC = () => {
             setStatusMessage('API Key 已失效或權限不足，請重新登入或手動獲取。');
         }
     });
+
+    // 計算總頁數
+    const pageCount = totalRecords ? Math.ceil(totalRecords / pagination.pageSize) : 0;
 
     useEffect(() => {
         fetchKey();
@@ -136,7 +145,6 @@ const GristDynamicSelectorViewer: React.FC = () => {
                     <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>選擇表格:</label>
                     <select value={selectedTableId} onChange={(e) => { setSelectedTableId(e.target.value); }} disabled={isLoading || tables.length === 0} style={styles.inputBase as React.CSSProperties}>
                         <option value="">{isLoading && !tables.length ? '加載中...' : (tables.length === 0 ? '無可用表格' : '-- 請選擇 --')}</option>
-                        {/* --- 【主要修正點】: 使用 table.id 來作為 key, value 和顯示的文字 --- */}
                         {tables.map((table) => (
                             <option key={table.id} value={table.id}>
                                 {table.id}
@@ -146,12 +154,25 @@ const GristDynamicSelectorViewer: React.FC = () => {
                 </div>
                 )}
                 
-                {tableData && <Filter onSubmit={handleFilterChange} isLoading={isLoading} />}
+                {selectedTableId && <Filter onSubmit={handleFilterChange} isLoading={isLoading} />}
             </div>
             )}
-
-            {tableData && columns && (
-                <Table data={tableData} columns={columns} />
+            
+            {/* --- 【主要修正點】: 將所有必需的 props 傳遞給 Table 組件 --- */}
+            {selectedTableId && !dataError && columns.length > 0 && (
+                <Table 
+                  data={pageData ?? []}
+                  columns={columns}
+                  pageCount={pageCount}
+                  pagination={pagination}
+                  setPagination={setPagination}
+                  sorting={sorting}
+                  setSorting={setSorting}
+                />
+            )}
+            
+            {pageData && pageData.length === 0 && !isLoading && !dataError && (
+              <p style={{textAlign: 'center', ...(styles.card as React.CSSProperties), marginTop: '20px'}}>找不到符合條件的記錄。</p>
             )}
         </div>
     );
