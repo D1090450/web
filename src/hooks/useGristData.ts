@@ -218,30 +218,42 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         setColumnSchema(null);
     }, [selectedTableId, activeFilters]);
     
-    // 動態產生欄位定義
+    // --- 【主要修正點】: 動態產生欄位定義 ---
     const tableColumns = useMemo((): ColumnDef<GristRecord, any>[] => {
         if (!columnSchema) return [];
+        
+        // 1. 明確地為 'id' 欄位建立定義
         const idColumn: ColumnDef<GristRecord, any> = {
-            accessorKey: 'id',
+            // 使用 'id' 作為 accessorKey 來直接讀取 record.id
+            accessorKey: 'id', 
             header: 'id',
-            enableSorting: false,
-            cell: info => info.getValue(),
+            enableSorting: false, // id 通常不需要排序，如果需要，可以改為 true
+            // id 的類型簡單，可以直接渲染，無需 CellRenderer
+            cell: info => info.getValue(), 
         };
+
+        // 2. 為 'fields' 物件中的其他欄位建立定義
         const otherColumns = columnSchema
-            .filter(col => !col.fields.isFormula && col.id !== 'id')
+            .filter(col => !col.fields.isFormula && col.id !== 'id') // 避免重複定義 id
             .map((col): ColumnDef<GristRecord, any> => {
                 const { id: colId, fields: { type: colType, label: colLabel } } = col;
                 return {
-                    accessorKey: `fields.${colId}`,
+                    // 使用 'fields.欄位ID' 來深入讀取 record.fields[colId]
+                    accessorKey: `fields.${colId}`, 
                     header: colLabel || colId,
+                    // 使用我們的智慧渲染器
                     cell: (info) => React.createElement(CellRenderer, { info }),
                     meta: { columnType: colType },
+                    // 根據欄位類型設定排序函數
                     sortingFn: (colType.startsWith('DateTime') || colType.startsWith('Date')) 
                         ? 'datetime' 
                         : (colType === 'Numeric' || colType === 'Int' ? 'alphanumeric' : undefined),
                 };
             });
+            
+        // 3. 將 'id' 欄位放在陣列的最前面
         return [idColumn, ...otherColumns];
+
     }, [columnSchema]);
 
     return {
