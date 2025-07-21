@@ -8,7 +8,7 @@ interface Organization { id: number; name: string; domain: string; }
 interface GristDocument { id: string; name: string; workspaceName: string; displayName: string; }
 interface GristTable { id: string; }
 interface GristColumn { id: string; fields: { isFormula: boolean; type: GristType; label: string; }; }
-export interface GristRecord { id: number; fields: { [key: string]: any; }; }
+export interface GristRecord { fields: { id: number; [key: string]: any; }; }
 
 // --- 常量 ---
 const GRIST_API_BASE_URL = 'https://tiss-grist.fcuai.tw';
@@ -68,6 +68,7 @@ const buildOrderByClause = (sortingState: SortingState): string => {
     return `ORDER BY ${sortClauses.join(', ')}`;
 };
 
+
 // --- Hook Props 和返回值的類型定義 ---
 interface UseGristDataProps {
   apiKey: string;
@@ -87,7 +88,7 @@ interface UseGristDataReturn {
   setPagination: React.Dispatch<React.SetStateAction<PaginationState>>;
   sorting: SortingState;
   setSorting: React.Dispatch<React.SetStateAction<SortingState>>;
-  handleFilterChange: React.Dispatch<React.SetStateAction<any | null>>;
+  runQueryWithFilters: (filters: any | null) => void; // 重新命名
 }
 
 // --- 自定義 Hook 主體 ---
@@ -104,6 +105,9 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
     const [sorting, setSorting] = useState<SortingState>([]);
     const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 50 });
     
+    // 使用一個 ref 來追蹤是否應該觸發數據獲取，以避免 useEffect 的複雜依賴
+    const queryTrigger = useRef<number>(0);
+
     const onAuthErrorRef = useRef(onAuthError);
     useEffect(() => { onAuthErrorRef.current = onAuthError; }, [onAuthError]);
 
@@ -122,9 +126,7 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
                 let determinedOrg: Organization | undefined;
                 if (Array.isArray(orgsData)) {
                     determinedOrg = orgsData.find(org => org.domain === TARGET_ORG_DOMAIN) || orgsData[0];
-                } else {
-                    determinedOrg = orgsData;
-                }
+                } else { determinedOrg = orgsData; }
                 if (!determinedOrg?.id) throw new Error('未能確定目標組織');
                 const workspaces = await apiRequest<any[]>(`/api/orgs/${determinedOrg.id}/workspaces`, apiKey);
                 const allDocs: any[] = [], docNameCounts: {[key: string]: number} = {};
@@ -153,22 +155,18 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
 
     // 核心的 SQL 數據獲取
     useEffect(() => {
-        if (!selectedTableId || !apiKey) {
-            setPageData([]);
-            setColumnSchema(null);
+        // 只有在觸發器改變時才執行
+        if (!selectedTableId || !apiKey || queryTrigger.current === 0) {
             return;
         }
+
         const fetchDataWithSql = async () => {
             setIsLoading(true);
             setError('');
-            
             const whereClause = buildWhereClause(activeFilters);
-
             try {
                 const countQuery = `SELECT COUNT("id") as count FROM "${selectedTableId}" ${whereClause}`;
-                const countResponse = await apiRequest<{ records: { fields: { count: number } }[] }>(
-                    `/api/docs/${selectedDocId}/sql`, apiKey, 'GET', { q: countQuery }
-                );
+                const countResponse = await apiRequest<{ records: { fields: { count: number } }[] }>(`/api/docs/${selectedDocId}/sql`, apiKey, 'GET', { q: countQuery });
                 const total = countResponse.records[0]?.fields.count || 0;
                 setTotalRecords(total);
 
@@ -178,7 +176,6 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
                         const columnsResponse = await apiRequest<{ columns: GristColumn[] }>(`/api/docs/${selectedDocId}/tables/${selectedTableId}/columns`, apiKey);
                         setColumnSchema(columnsResponse.columns);
                     }
-                    setIsLoading(false);
                     return;
                 }
                 
@@ -187,15 +184,13 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
                 const offset = pagination.pageIndex * pagination.pageSize;
                 const dataQuery = `SELECT * FROM "${selectedTableId}" ${whereClause} ${orderByClause} LIMIT ${limit} OFFSET ${offset}`;
                 
-                const dataResponse = await apiRequest<{ records: GristRecord[] }>(
-                    `/api/docs/${selectedDocId}/sql`, apiKey, 'GET', { q: dataQuery }
-                );
-                setPageData(dataResponse.records);
+                const [dataResponse, columnsResponse] = await Promise.all([
+                    apiRequest<{ records: GristRecord[] }>(`/api/docs/${selectedDocId}/sql`, apiKey, 'GET', { q: dataQuery }),
+                    columnSchema ? Promise.resolve(null) : apiRequest<{ columns: GristColumn[] }>(`/api/docs/${selectedDocId}/tables/${selectedTableId}/columns`, apiKey)
+                ]);
 
-                if (!columnSchema) {
-                    const columnsResponse = await apiRequest<{ columns: GristColumn[] }>(
-                        `/api/docs/${selectedDocId}/tables/${selectedTableId}/columns`, apiKey
-                    );
+                setPageData(dataResponse.records);
+                if (columnsResponse) {
                     setColumnSchema(columnsResponse.columns);
                 }
 
@@ -209,51 +204,52 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         };
 
         fetchDataWithSql();
-    }, [apiKey, selectedDocId, selectedTableId, pagination, sorting, activeFilters, columnSchema, handleApiError]);
+    }, [queryTrigger.current, apiKey, selectedDocId, selectedTableId, pagination, sorting, activeFilters, columnSchema, handleApiError]);
     
-    // 當表格或篩選條件切換時，重置
+    // 當表格切換時，重置所有狀態
     useEffect(() => {
         setPagination({ pageIndex: 0, pageSize: 50 });
         setSorting([]);
+        setActiveFilters(null);
         setColumnSchema(null);
-    }, [selectedTableId, activeFilters]);
+        setTotalRecords(0);
+        setPageData([]);
+        queryTrigger.current = 0; // 重置觸發器
+    }, [selectedTableId]);
     
-    // --- 【主要修正點】: 動態產生欄位定義 ---
+    // 【主要變更點】: 這是由父組件觸發查詢的入口點
+    const runQueryWithFilters = useCallback((filters: any | null) => {
+        setActiveFilters(filters);
+        setPagination(p => ({ ...p, pageIndex: 0 })); // 每次新查詢都回到第一頁
+        queryTrigger.current = Date.now(); // 改變觸發器的值來啟動 useEffect
+    }, []);
+
+    // 動態產生欄位定義
     const tableColumns = useMemo((): ColumnDef<GristRecord, any>[] => {
         if (!columnSchema) return [];
-        
-        // 1. 明確地為 'id' 欄位建立定義
         const idColumn: ColumnDef<GristRecord, any> = {
-            // 使用 'id' 作為 accessorKey 來直接讀取 record.id
-            accessorKey: 'id', 
-            header: 'id',
-            enableSorting: false, // id 通常不需要排序，如果需要，可以改為 true
-            // id 的類型簡單，可以直接渲染，無需 CellRenderer
-            cell: info => info.getValue(), 
+            accessorKey: 'fields.id', header: 'id', enableSorting: false,
+            cell: info => info.getValue(),
         };
-
-        // 2. 為 'fields' 物件中的其他欄位建立定義
         const otherColumns = columnSchema
-            .filter(col => !col.fields.isFormula && col.id !== 'id') // 避免重複定義 id
+            .filter(col => !col.fields.isFormula && col.id !== 'id')
             .map((col): ColumnDef<GristRecord, any> => {
                 const { id: colId, fields: { type: colType, label: colLabel } } = col;
                 return {
-                    // 使用 'fields.欄位ID' 來深入讀取 record.fields[colId]
-                    accessorKey: `fields.${colId}`, 
+                    accessorKey: `fields.${colId}`,
                     header: colLabel || colId,
-                    // 使用我們的智慧渲染器
                     cell: (info) => React.createElement(CellRenderer, { info }),
                     meta: { columnType: colType },
-                    // 根據欄位類型設定排序函數
                     sortingFn: (colType.startsWith('DateTime') || colType.startsWith('Date')) 
-                        ? 'datetime' 
-                        : (colType === 'Numeric' || colType === 'Int' ? 'alphanumeric' : undefined),
+                        ? 'datetime' : (colType === 'Numeric' || colType === 'Int' ? 'alphanumeric' : undefined),
                 };
             });
-            
-        // 3. 將 'id' 欄位放在陣列的最前面
-        return [idColumn, ...otherColumns];
+        
+        // 確保 id 欄位總是在最前面
+        const idColIndex = otherColumns.findIndex(c => c.header === 'id');
+        if (idColIndex > -1) otherColumns.splice(idColIndex, 1);
 
+        return [idColumn, ...otherColumns];
     }, [columnSchema]);
 
     return {
@@ -265,9 +261,9 @@ export const useGristData = ({ apiKey, selectedDocId, selectedTableId, onAuthErr
         pageData,
         totalRecords,
         pagination,
-        sorting,
         setPagination,
+        sorting,
         setSorting,
-        handleFilterChange: setActiveFilters,
+        runQueryWithFilters,
     };
 };
