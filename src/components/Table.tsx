@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -45,7 +45,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   paginationSelect: { padding: '6px', border: '1px solid #dee2e6', borderRadius: '4px' }
 };
 
-// 【主要變更點 1】: 重新定義 Props，以接收所有分頁和排序的狀態與控制器
+// Props 類型定義 (保持不變)
 interface TableProps<TData> {
   data: TData[];
   columns: ColumnDef<TData, any>[];
@@ -70,23 +70,18 @@ export const Table = <TData extends object>({
   setSorting,
 }: TableProps<TData>) => {
   
-  // 移除元件內部的 state，因為現在由父元件 (透過 useGristData Hook) 控制
-
   const table = useReactTable({
     data,
     columns,
-    pageCount: pageCount, // 傳入計算好的總頁數
+    pageCount: pageCount,
     state: {
       sorting,
       pagination,
     },
-    // 【主要變更點 2】: 重新啟用手動模式
     manualPagination: true,
     manualSorting: true,
-    // 將狀態變更事件回傳給父元件
     onSortingChange: setSorting,
     onPaginationChange: setPagination,
-    // 只需要核心模型，因為分頁和排序都在伺服器端處理
     getCoreRowModel: getCoreRowModel(), 
   });
 
@@ -140,7 +135,6 @@ export const Table = <TData extends object>({
             </tr>
           ))}
         </tbody>
-        {/* 【主要變更點 3】: 恢復功能齊全的分頁 UI */}
         <tfoot>
             <tr>
                 <td colSpan={columns.length} style={{ padding: 0 }}>
